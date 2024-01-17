@@ -1,124 +1,124 @@
-/* Simple buffer example for ESP32/PlatformIO */
-
-#include <AESLib.h>
-
-#define BAUD 115200
-
-AESLib aesLib;
-
-#define INPUT_BUFFER_LIMIT (128 + 1) // designed for Arduino UNO, not stress-tested anymore (this works with readBuffer[129])
-
-unsigned char cleartext[INPUT_BUFFER_LIMIT] = {0}; // THIS IS INPUT BUFFER (FOR TEXT)
-unsigned char ciphertext[2*INPUT_BUFFER_LIMIT] = {0}; // THIS IS OUTPUT BUFFER (FOR BASE64-ENCODED ENCRYPTED DATA)
-
-unsigned char readBuffer[18] = "username:password";
-
-// AES Encryption Key (same as in node-js example)
-byte aes_key[] = { 0x6A, 0x6A, 0x6A, 0x6A, 0x6A, 0x6A, 0x6A, 0x6A, 0x6A, 0x6A, 0x6A, 0x6A, 0x6A, 0x6A, 0x6A, 0x6A };
-
-// General initialization vector (same as in node-js example) (you must use your own IV's in production for full security!!!)
-byte aes_iv[N_BLOCK] = { 0x6A, 0x6A, 0x6A, 0x6A, 0x6A, 0x6A, 0x6A, 0x6A, 0x6A, 0x6A, 0x6A, 0x6A, 0x6A, 0x6A, 0x6A, 0x6A };
-
-// Generate IV (once)
-void aes_init() {
-  aesLib.gen_iv(aes_iv);
-
-  Serial.println((char*)aes_iv);
+#include <ESP8266WiFi.h>
 
 
-  // Padding Modes:
-  // 0 = CMS, 
-  // 1 = Bit,
-  // 2 = ZeroLength,
-  // 3 = Null,
-  // 4 = Space,
-  // 5 = Random,
-  // 6 = Array
 
-  aesLib.set_paddingmode((paddingMode)0);
+
+const char* ssid = "Emre6";
+const char* password = "emreke66";
+const char* server_ip = "172.20.10.2";  // Replace with the IP address of your server
+const int server_port = 8080;
+
+int BLUE = 0;  // Variable to store the state based on the server message
+
+WiFiClient client;
+
+const int bluePin = D0; // make big led blue : HIGH --> OPEN , LOW --> CLOSE
+const int emptyPin = D1; // DOES NOTHING
+const int emptyPin2 = D2; // DOES NOTHING
+const int greenPin = D3; // make big led green : LOW --> OPEN, HIGH --> CLOSE
+const int redPin = D4; // make big led red : LOW --> OPEN, HIGH --> CLOSE
+
+
+
+
+
+
+
+
+
+
+void connectToServer() {
+  Serial.println("Connecting to server...");
+  if (client.connect(server_ip, server_port)) {
+    Serial.println("Connected to server");
+  } else {
+    Serial.println("Connection to server failed!");
+  }
 }
 
-uint16_t encrypt_to_ciphertext(char * msg, uint16_t msgLen, byte iv[]) {
-  Serial.println("Calling encrypt (string)...");
-  int cipherlength = aesLib.encrypt((byte*)msg, msgLen, (byte*)ciphertext, aes_key, sizeof(aes_key), iv);
-  return cipherlength;
+void sendToServer(String message) {
+  if (client.connected()) {
+    Serial.println("Sending message to server...");
+    client.println(message);
+  } else {
+    Serial.println("Not connected to server. Reconnecting...");
+    connectToServer();
+    if (client.connected()) {
+      Serial.println("Sending message to server...");
+      client.println(message);
+    } else {
+      Serial.println("Failed to reconnect to server!");
+    }
+  }
 }
 
-uint16_t decrypt_to_cleartext(byte msg[], uint16_t msgLen, byte iv[]) {
-  Serial.print("Calling decrypt...; ");
-  uint16_t dec_bytes = aesLib.decrypt(msg, msgLen, (byte*)cleartext, aes_key, sizeof(aes_key), iv);
-  Serial.print("Decrypted bytes: "); Serial.println(dec_bytes);
-  return dec_bytes;
-}
+void checkServerMessages() {
 
-void export_ciphertext(int encLen) {
-  Serial.println("CIPHERTEXT BYTES (in Base64): ");
-  for (int i = 0; i < encLen; i++) {
-    Serial.print(char(ciphertext[i]));
+  if (client.available()) {
+    String response = client.readStringUntil('\n');
+    Serial.print("Received message from server: ");
+    Serial.println(response);
+
+    // Check for the "BLUE" message
+    if (response.equals("BLUE")) {
+       //BLUE LED
+      digitalWrite(bluePin, HIGH);
+      digitalWrite(redPin, HIGH);
+      digitalWrite(greenPin, HIGH);
+      Serial.println("Set BLUE variable to 1");
+    } 
+    else if (response.equals("RED")) {
+      //RED LED
+      digitalWrite(bluePin, LOW);
+      digitalWrite(redPin, LOW);
+      digitalWrite(greenPin, HIGH);
+      Serial.println("Set RED variable to 1");
+    }
+    else if (response.equals("GREEN")) {
+      //GREEN LED
+      digitalWrite(bluePin, LOW);
+      digitalWrite(redPin, HIGH);
+      digitalWrite(greenPin, LOW);
+      Serial.println("Set GREEN variable to 1");
+    }
+    else {
+      Serial.println("Message was: " + response);
+      digitalWrite(bluePin, LOW);
+      digitalWrite(redPin, HIGH);
+      digitalWrite(greenPin, HIGH);
+    }
   }
 }
 
 void setup() {
-  Serial.begin(BAUD);
-  Serial.setTimeout(60000);
-  delay(2000);
-
-  aes_init(); // generate random IV, should be called only once? causes crash if repeated...
-
-}
-
-/* non-blocking wait function */
-void wait(unsigned long milliseconds) {
-  unsigned long timeout = millis() + milliseconds;
-  while (millis() < timeout) {
-    yield();
+  Serial.begin(115200);
+  
+  // Connect to Wi-Fi
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(1000);
+    Serial.println("Connecting to WiFi...");
   }
+  Serial.println("Connected to WiFi");
+
+  pinMode(redPin, OUTPUT);
+  pinMode(bluePin, OUTPUT);
+  pinMode(greenPin, OUTPUT);
+
+  digitalWrite(bluePin, LOW);
+  digitalWrite(redPin, HIGH);
+  digitalWrite(greenPin, HIGH);
+
+  // Connect to the server
+  connectToServer();
+
+  //decrypt_with_aes_cbc();
 }
-
-unsigned long loopcount = 0;
-
-// Working IV buffer: Will be updated after encryption to follow up on next block.
-// But we don't want/need that in this test, so we'll copy this over with enc_iv_to/enc_iv_from
-// in each loop to keep the test at IV iteration 1. We could go further, but we'll get back to that later when needed.
-
-// General initialization vector (same as in node-js example) (you must use your own IV's in production for full security!!!)
-byte enc_iv[N_BLOCK] =      { 0x6A, 0x6A, 0x6A, 0x6A, 0x6A, 0x6A, 0x6A, 0x6A, 0x6A, 0x6A, 0x6A, 0x6A, 0x6A, 0x6A, 0x6A, 0x6A };
-byte enc_iv_to[N_BLOCK]   = { 0x6A, 0x6A, 0x6A, 0x6A, 0x6A, 0x6A, 0x6A, 0x6A, 0x6A, 0x6A, 0x6A, 0x6A, 0x6A, 0x6A, 0x6A, 0x6A };
-byte enc_iv_from[N_BLOCK] = { 0x6A, 0x6A, 0x6A, 0x6A, 0x6A, 0x6A, 0x6A, 0x6A, 0x6A, 0x6A, 0x6A, 0x6A, 0x6A, 0x6A, 0x6A, 0x6A };
 
 void loop() {
+  // Check for server messages periodically
+  checkServerMessages();
 
-  Serial.print("readBuffer length: "); Serial.println(sizeof(readBuffer));
-
-   // must not exceed INPUT_BUFFER_LIMIT bytes; may contain a newline
-  sprintf((char*)cleartext, "%s", readBuffer);
-
-  // Encrypt
-  // iv_block gets written to, provide own fresh copy... so each iteration of encryption will be the same.
-  uint16_t msgLen = sizeof(readBuffer);
-  memcpy(enc_iv, enc_iv_to, sizeof(enc_iv_to));
-  uint16_t encLen = encrypt_to_ciphertext((char*)cleartext, msgLen, enc_iv);
-  Serial.print("Encrypted length = "); Serial.println(encLen);
-
-  export_ciphertext(encLen);
-
-  Serial.println(); Serial.println("Encrypted. Decrypting..."); Serial.println(encLen); Serial.flush();
-
-  memset(cleartext, 0, sizeof(cleartext)); // zero out to make sure we have no false positives
-
-  memcpy(enc_iv, enc_iv_from, sizeof(enc_iv_from));
-  uint16_t decLen = decrypt_to_cleartext(ciphertext, encLen , enc_iv);
-  Serial.print("Decrypted cleartext of length: "); Serial.println(decLen);
-  Serial.print("Decrypted cleartext:\n"); Serial.println((char*)cleartext);
-
-  if (strcmp((char*)readBuffer, (char*)cleartext) == 0) {
-    Serial.println("Decrypted correctly.");
-  } else {
-    Serial.println("Decryption test failed.");
-  }
-
-  Serial.println("---");
-
-  wait(2000);
-
+  // Your other loop logic can go here
+  delay(1000);
 }
