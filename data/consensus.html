@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Get color Color</title>
+</head>
+<body>
+    <h2>Preferred Color</h2>
+    <form action="/consensus" method="post">
+        <label for="color">Select Color:</label>
+        <select id="color" name="color">
+            <option value="GREEN">GREEN</option>
+            <option value="RED">RED</option>
+            <option value="BLUE">BLUE</option>
+        </select>
+        <br>
+        <input type="hidden" id="identifier" name="identifier" value="Device">
+        <input type="submit" value="Get color">
+    </form>
+</body>
+</html>
