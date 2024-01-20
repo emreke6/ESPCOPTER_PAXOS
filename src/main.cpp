@@ -1,8 +1,11 @@
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
 #include <ESP8266HTTPUpdateServer.h>
+#include <ESP8266WebServerSecure.h>
+#include <CertStoreBearSSL.h>
 #include <ESP8266mDNS.h>
 #include <FS.h>
+#include <WiFiClientSecure.h>
 
 //const char* ssid = "Emre6";
 //const char* password = "emreke66";
@@ -21,8 +24,66 @@ const char *ssid = "ESPSSID";
 const char *password = "asdqwe123";
 const char *hostname = "MyESP";
 
-ESP8266WebServer _httpServer (80);
+const char cert[] = R"EOF(
+-----BEGIN CERTIFICATE-----
+MIIDhTCCAm2gAwIBAgIUcCRI2XD0CQVSD5s9aQCjd2xBXgAwDQYJKoZIhvcNAQEL
+BQAwUjELMAkGA1UEBhMCVFIxDDAKBgNVBAgMA0lTVDEOMAwGA1UEBwwFVFVaTEEx
+EDAOBgNVBAoMB1NBQkFOQ0kxEzARBgNVBAsMClVOSVZFUlNJVFkwHhcNMjQwMTIw
+MTYzMzU4WhcNMjUwMTE5MTYzMzU4WjBSMQswCQYDVQQGEwJUUjEMMAoGA1UECAwD
+SVNUMQ4wDAYDVQQHDAVUVVpMQTEQMA4GA1UECgwHU0FCQU5DSTETMBEGA1UECwwK
+VU5JVkVSU0lUWTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAKpXBkN5
+eFUsRUX1uYW0Z0IwvPSn+FdivYqwyWsGUDp14wfYCKoISvZhtlyizZzYaY3y6UW4
+XMXmfiykSuYSAbQx1ZPAZ8mr9sfiPST3IOdRHpERBGmuMeBeZidf9gioQ0lbmL8c
+d3kcZd3bLefrjjUVZY+RQK76i+A6CFtQdPxggvsP2nAbdeNMLYIKjx2eLBQerFtt
+kc6sfqtgZtnfth7hx24yFUVqWsZ24UN77f1jCsv4689HEVa4fyzi17zG+GMZFxi6
+paFLMRGqCpAe1ubrmakbr3JsIUYwTFMJulg439g8NSjBbzA9qgYUVJcuEochDGyG
+YzOIbuDRE8Vp+OcCAwEAAaNTMFEwHQYDVR0OBBYEFF609Q26qmochB3JsQD6+4HB
+0Zl3MB8GA1UdIwQYMBaAFF609Q26qmochB3JsQD6+4HB0Zl3MA8GA1UdEwEB/wQF
+MAMBAf8wDQYJKoZIhvcNAQELBQADggEBAJ0meDN3mwjCnBrLtJcv5cDjB34vhgL0
+KnExoR9aHd2xo7wRDZsIiJas5wuKyOyGC5t/cIQDBkRRcpNGZNpaBDKbgeCTZv33
+PFPUG88QIlvg3lKuk3Ok3FRq0POub/QJ4JF++if5gDCInEweDFZ/10EtLXqig5/d
+jsOkIaKn+N7sVDbWbi7FsSlqqG4HwKsN+h+c8+N6Kaj0OQfpK38seNuXWDWh4E19
+YzihC3NG63b4PQrCRiTwOXHWQTQYwahMo0tOE9FZkQ8pNiKnL/FyYRBeBBEK3m84
+56SfwbFATaNvK+e+cpvF6f3GnJr1G3ZWP4+twOncs+wRLhtAi1Z3zrI=
+-----END CERTIFICATE-----
+)EOF";
+
+const char privateKey[] = R"EOF(
+-----BEGIN PRIVATE KEY-----
+MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCqVwZDeXhVLEVF
+9bmFtGdCMLz0p/hXYr2KsMlrBlA6deMH2AiqCEr2YbZcos2c2GmN8ulFuFzF5n4s
+pErmEgG0MdWTwGfJq/bH4j0k9yDnUR6REQRprjHgXmYnX/YIqENJW5i/HHd5HGXd
+2y3n6441FWWPkUCu+ovgOghbUHT8YIL7D9pwG3XjTC2CCo8dniwUHqxbbZHOrH6r
+YGbZ37Ye4cduMhVFalrGduFDe+39YwrL+OvPRxFWuH8s4te8xvhjGRcYuqWhSzER
+qgqQHtbm65mpG69ybCFGMExTCbpYON/YPDUowW8wPaoGFFSXLhKHIQxshmMziG7g
+0RPFafjnAgMBAAECggEADurWxkCfBHvUso8VvjB8Un7zgqGAeCFSOWZzXTINA0b2
+U5DcbAzp3lspneyMASOwABm5IBKd3UmVhydO1TMtKbCrjuhCA+v8DVPcyEie0w3M
+QCazXOXqbEcYFHQCQePVG1mFg5xkl3CgjdCiBot0cBBS9+21MnMH840MKk2ze7PQ
+q5dQ/OU0ImWDFGNToPsQXG0NXtBEgrDD0hAmDMGoz3qVJ6wV8hQpTYGWxz2yL12S
+maxGb0m+8sb7ou9PY3H6vus3VBoPD8JN1nikXJ6YtKW8LHdceucUnxGFCgtbrWSO
+U1VAgokm4MmQjSFckIzs3qaZ4H+QCsSbadZKhTuvMQKBgQDhU9KP0s/rLk3HIPry
+58FkY5BEoJk4liet/yvJv+Zh8+ZTo4rghq+RLlB7nqq+IvKmqB0mzlwCOwUsXQ1s
+rIvAy19atTM4hQQodR1Jc0Yd/PDuRMCENM42QPQoBUSjdR+AIfB1Fk3L5Atc5vuA
+yVACoiIOk356l0J8Cff1kfw/iwKBgQDBhwF+4aZ9Md9Rr+dRFS5YrU+66IVHsW3l
+NpmIodonmhMQfZxHtaAkPtd+b8avlTlC9U/TWyFRN+xeeN9GuL7Z8VKhCDTTh811
+tZD/zNAom4t6fxwdjNqhkKmJdNr83TNvejAaPfiV3AqDiaVnkWBztWHPxFRlZidm
+u0u0sBqXlQKBgEsDluPesO2AutACQMlBMnbzVoIiXSAjjQ42FyPRSSdvBUzu8zsQ
+W76fhpfBGOK3y8SDz0CuDp+Heo9sYx28y8HhcttF28mDLwExDBD52Wv+W09XgCgD
+VGtncGEqb9FjGpuTsPOp+zhXsRi6pRwY6RQXWfM0UzUIyk91GiGc+jdFAoGBAJXW
+p8vLfpJ0aMngfiMDWU0DczXuDjOCJupPqfRmDHiZDKW5+6Rx9bnahhK5DIap7Rnw
+wYuNhXBS8kn7IDSrmek4tZdEuVIGVYgLumaz939ZX1bKz8P5aNWrIfjxZxRdWBO5
+8UCANtYg9mr9yfk0UA+GomKxSf7wZxVdcrJFn3E5AoGAFl2D2/hJwikoA5EeXe9p
+zUA3UsU5uCFuk1YFx4oUUZ9OQznWWYUI6+vRObxahSnQz8ESeMnEQRRbnTReU+3W
+BadNwtpFY5+VbE6kvf5FPD/RJU1hRXKF/UpUqLai3aC5xKHAP5V+ww+k9F7hsXaW
+LpUNcoRJCOK2xR6VlBAoS/c=
+-----END PRIVATE KEY-----
+)EOF";
+
+ESP8266WebServerSecure _httpServer(443);
   ESP8266HTTPUpdateServer _httpUpdater;
+
+  BearSSL::X509List certList(cert);
+BearSSL::PrivateKey privateKeyObject(privateKey);
 
 
 
@@ -159,8 +220,8 @@ void sendColorToOtherDevices(const String &color) {
     for (int i = 0; i < n; ++i) {
         if (MDNS.IP(i) != WiFi.localIP()) { // Skip sending to itself
             // Create a client to send data to other devices
-            WiFiClient client;
-            if (client.connect(MDNS.IP(i), 80)) {
+              WiFiClientSecure client;
+            if (client.connect(MDNS.IP(i), 443)) {
               String payload = "color=" + color + "&identifier=" + String(ESP.getChipId());
                 client.print("POST /consensus HTTP/1.1\r\n");
                 client.print("Host: ");
@@ -296,7 +357,7 @@ void setup() {
     });
     //WiFi.mode(WIFI_AP_STA);
 
-
+    _httpServer.getServer().setRSACert(&certList, &privateKeyObject);
     _httpServer.on("/", HTTP_GET, handleRoot);
     _httpServer.on("/config", HTTP_GET, handleAP);
     _httpServer.on("/save", HTTP_POST, handleSave);
@@ -310,10 +371,9 @@ void setup() {
 
     Serial.println("mDNS responder started");
 
-    _httpUpdater.setup(&_httpServer);
-    _httpServer.begin();
+    //_httpUpdater.setup(&_httpServer.getServer());
 
-    MDNS.addService("http", "tcp", 80);
+    MDNS.addService("http", "tcp", 443);
 
    
 
