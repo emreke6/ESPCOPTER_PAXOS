@@ -138,27 +138,29 @@ void handleConsensus()
     Serial.println("Original Color: " + selectedColor);
 
     // Encrypt
-    byte plaintext[selectedColor.length()];
-    selectedColor.getBytes((unsigned char *)plaintext, selectedColor.length() + 1);
+    byte plaintext[selectedColor.length()+1];
+    byte plain_p[sizeof(plaintext) + (N_BLOCK - (sizeof(plaintext) % 16)) - 1];
+    selectedColor.getBytes((unsigned char *)plaintext, sizeof(plaintext));
 
-    byte keyArray[] = {'d', 'u', 'y', 'g', 'u', 't', 'u', 'm', 'e', 'r', 0, 0, 0, 0, 0, 0};
-    aes.set_key(keyArray, sizeof(keyArray));
-
+    Serial.print("PLain text befıre: ");
+    aes.printArray(plaintext);
+    Serial.print("PLain text: ");
+    Serial.write(plaintext,sizeof(plaintext));
+    byte keyArray[] = "0123456789987654";
+    //aes.set_key(keyArray, sizeof(keyArray));
     byte iv[16] = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
                    0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
 
-    byte encryptedColor[selectedColor.length()];
-    aes.cbc_encrypt(plaintext, encryptedColor, selectedColor.length(), iv);
+    byte iv2[16] = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+                   0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
 
+    byte encryptedColor[sizeof(plaintext) + (N_BLOCK - (sizeof(plaintext) % 16)) - 1];
+    aes.do_aes_encrypt(plaintext, sizeof(plaintext),encryptedColor, keyArray,16,iv);
+
+    //aes.clean();
     // Print the encrypted color
     Serial.print("Encrypted Color: ");
-    for (int i = 0; i < sizeof(encryptedColor); i++)
-    {
-      if (encryptedColor[i] < 16)
-        Serial.print("0");
-      Serial.print(encryptedColor[i], HEX);
-    }
-    Serial.println();
+    Serial.write(encryptedColor,sizeof(encryptedColor));
 
     if (identifier == String(ESP.getChipId()))
     {
@@ -171,21 +173,14 @@ void handleConsensus()
     }
 
     // Decrypt
-    byte decryptedColor[selectedColor.length()];
-    aes.cbc_decrypt(encryptedColor, decryptedColor, selectedColor.length(), iv);
+    aes.do_aes_decrypt(encryptedColor,aes.get_size(),plain_p,keyArray,16,iv2);
 
     // Print the decrypted color
-    String decryptedColorString = "";
-    for (int i = 0; i < sizeof(decryptedColor); i++)
-    {
-      if (decryptedColor[i] < 16)
-        decryptedColorString += "0"; // Ensure leading zero for small values
-      decryptedColorString += String(decryptedColor[i], HEX);
-    }
+    
     Serial.print("Decrypted Color: ");
-    Serial.println(decryptedColorString);
+    Serial.write(plain_p,sizeof(plain_p));
 
-    if (decryptedColor[0] == 'B' && decryptedColor[1] == 'L' && decryptedColor[2] == 'U' && decryptedColor[3] == 'E')
+    if (plain_p[0] == 'B' && plain_p[1] == 'L' && plain_p[2] == 'U' && plain_p[3] == 'E')
     {
       // BLUE LED
       digitalWrite(bluePin, HIGH);
@@ -193,7 +188,7 @@ void handleConsensus()
       digitalWrite(greenPin, HIGH);
       Serial.println("Set BLUE variable to 1");
     }
-    else if (decryptedColor[0] == 'R' && decryptedColor[1] == 'E' && decryptedColor[2] == 'D')
+    else if (plain_p[0] == 'R' && plain_p[1] == 'E' && plain_p[2] == 'D')
     {
       // RED LED
       digitalWrite(bluePin, LOW);
@@ -201,7 +196,7 @@ void handleConsensus()
       digitalWrite(greenPin, HIGH);
       Serial.println("Set RED variable to 1");
     }
-    else if (decryptedColor[0] == 'G' && decryptedColor[1] == 'R' && decryptedColor[2] == 'E' && decryptedColor[3] == 'E' && decryptedColor[4] == 'N')
+    else if (plain_p[0] == 'G' && plain_p[1] == 'R' && plain_p[2] == 'E' && plain_p[3] == 'E' && plain_p[4] == 'N')
     {
       // GREEN LED
       digitalWrite(bluePin, LOW);
