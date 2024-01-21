@@ -1,4 +1,9 @@
 #include <Arduino.h>
+#include "bignumber.h"
+#include <iostream>
+#include "string.h"
+
+using namespace std;
 
 
 // Custom 128-bit unsigned integer type
@@ -8,6 +13,43 @@ typedef struct {
 } uint128_t;
 
 #define RSA_BIT_SIZE 64
+
+uint128_t* RSA_N;
+uint128_t* RSA_PHI;
+
+BigNumber mod(const BigNumber& b, const BigNumber& a) {
+    return b - (b / a) * a;
+}
+
+BigNumber egcd(BigNumber a, BigNumber b, BigNumber& x, BigNumber& y) {
+    x = 0; 
+    y = 1;
+    BigNumber u = 1, v = 0;
+
+    while (!(a == 0)) {
+        BigNumber q = b / a;
+        BigNumber r = mod(b, a);
+        BigNumber m = x - u * q;
+        BigNumber n = y - v * q;
+        b = a;
+        a = r;
+        x = u;
+        y = v;
+        u = m;
+        v = n;
+    }
+
+    return b;
+}
+
+BigNumber modinv(BigNumber a, BigNumber b) {
+    BigNumber x = 0, y = 0;
+    BigNumber gcd = egcd(a, b, x, y);
+    if (!(gcd == 1)) {
+        return 0;
+    }
+    return mod(x, b) < 0 ? mod(x, b) + b : mod(x, b);
+}
 
 void mult64to128(uint64_t op1, uint64_t op2, uint64_t *hi, uint64_t *lo)
 {
@@ -57,38 +99,38 @@ uint128_t mod_exp(uint128_t base, uint128_t exp, uint128_t mod)
   return result;
 }
 
-// Function to perform the extended Euclidean algorithm
-uint64_t extended_gcd(uint64_t a, uint64_t b, uint64_t *x, uint64_t *y)
-{
-  if (a == 0)
-  {
-    *x = 0;
-    *y = 1;
-    return b;
-  }
+// // Function to perform the extended Euclidean algorithm
+// uint64_t extended_gcd(uint64_t a, uint64_t b, uint64_t *x, uint64_t *y)
+// {
+//   if (a == 0)
+//   {
+//     *x = 0;
+//     *y = 1;
+//     return b;
+//   }
 
-  uint64_t x1, y1;
-  uint64_t gcd = extended_gcd(b % a, a, &x1, &y1);
+//   uint64_t x1, y1;
+//   uint64_t gcd = extended_gcd(b % a, a, &x1, &y1);
 
-  *x = y1 - (b / a) * x1;
-  *y = x1;
+//   *x = y1 - (b / a) * x1;
+//   *y = x1;
 
-  return gcd;
-}
+//   return gcd;
+// }
 
-// Function to calculate the modular inverse
-uint64_t mod_inverse(uint64_t a, uint64_t m)
-{
-  uint64_t x, y;
-  uint64_t gcd = extended_gcd(a, m, &x, &y);
+// // Function to calculate the modular inverse
+// uint64_t mod_inverse(uint64_t a, uint64_t m)
+// {
+//   uint64_t x, y;
+//   uint64_t gcd = extended_gcd(a, m, &x, &y);
 
-  if (gcd != 1)
-    return -1; // modular inverse does not exist
+//   if (gcd != 1)
+//     return -1; // modular inverse does not exist
 
-  return (x % m + m) % m;
-}
+//   return (x % m + m) % m;
+// }
 
-void generate_key_pair(uint64_t *public_key, uint64_t *private_key, uint64_t *modulus_high,  uint64_t *modulus_low)
+void generate_key_pair(uint128_t *public_key, uint128_t *private_key)
 {
   // Select two large prime numbers
   uint64_t p = 17978448171644331181ULL;
@@ -97,25 +139,44 @@ void generate_key_pair(uint64_t *public_key, uint64_t *private_key, uint64_t *mo
   //modulus->low = p * q;
   //modulus->high = 0;
 
-  mult64to128(p, q, (uint64_t*)modulus_high, (uint64_t*)modulus_low);
+  mult64to128(p, q, (uint64_t*)RSA_N->high, (uint64_t*)RSA_N->low);
 
   Serial.println("Modulus high");
-  Serial.println(*modulus_high);
+  Serial.println(RSA_N->high);
 
   Serial.println("Modulus low");
-  Serial.println(*modulus_low);
+  Serial.println(RSA_N->low);
 
 
-  uint64_t phi = (p - 1) * (q - 1);
+  mult64to128(p-1, q-1, (uint64_t*)RSA_PHI->high, (uint64_t*)RSA_PHI->low);
+
+  Serial.println("RSA_PHI high");
+  Serial.println(RSA_PHI->high);
+
+  Serial.println("RSA_PHI low");
+  Serial.println(RSA_PHI->low);
 
   // Select public key (e) such that 1 < e < phi(n) and gcd(e, phi(n)) = 1
   uint64_t public_key_e = 17;
 
   // Calculate private key (d) using modular inverse of e mod phi(n)
-  uint64_t private_key_d = mod_inverse(public_key_e, phi);
+  BigNumber public_key_big = public_key_e;
+  BigNumber RSA_PHI_big = RSA_PHI->high << 64 + RSA_PHI->low;
 
-  *public_key = public_key_e;
-  *private_key = private_key_d;
+  Serial.println("RSA_PHI_big ");
+  Serial.println(to_string(RSA_PHI_big));
+
+  Serial.println("RSA_PHI low");
+  Serial.println(RSA_PHI->low);
+  BigNumber private_key_d = modinv(public_key_e, RSA_PHI_big);
+
+  
+
+  public_key->high = public_key_e >> 32;
+  public_key->low = public_key_e & 0xFFFFFFFF;
+
+  private_key->high = (uint64_t)stoi((private_key_d/(pow(2,32))).getString());
+  private_key->low = (uint64_t)stoi((private_key_d).getString());
 }
 
 void encrypt(uint64_t plaintext, uint64_t public_key, uint128_t modulus, uint64_t *ciphertext)
@@ -149,8 +210,8 @@ void setup()
   Serial.begin(115200);
 
   uint64_t public_key, private_key;
-  uint64_t modulus_low, modulus_high;
-  generate_key_pair(&public_key, &private_key, &modulus_low, &modulus_high);
+  uint128_t modulus;
+  generate_key_pair(&public_key, &private_key, &modulus);
 
   // Serial.print("Public Key: ");
   // Serial.println(public_key);
