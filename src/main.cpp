@@ -3,10 +3,22 @@
 #include <ESP8266HTTPUpdateServer.h>
 #include <ESP8266mDNS.h>
 #include <FS.h>
+#include <Base64.h>
 #include "AES.h" // Include the AES library
-
+#include <base64.h>
 // const char* ssid = "Emre6";
 // const char* password = "emreke66";
+#define BLOCK_SIZE 16
+#define KEY_SIZE 32
+#define MAX_NAME 256
+#define NETWORK_SIZE 3
+struct keyMapping {
+  char hostName[MAX_NAME];
+  byte key[KEY_SIZE];
+};
+
+struct keyMapping keyMappings[NETWORK_SIZE];
+
 const char *server_ip = "172.20.10.7"; // Replace with the IP address of your server
 const int server_port = 8080;
 
@@ -110,6 +122,36 @@ void persistCredentials(const char *ssid, const char *password)
     Serial.println("Failed to open file for writing");
   }
 }
+String byteArrayToString(byte arr[], int size) {
+  String result = "";
+  for (int i = 0; i < size; i++) {
+    result += char(arr[i]);
+  }
+  return result;
+}
+bool getKey(const char * targetName,byte * resultKey) {
+  for(int i = 0;i<NETWORK_SIZE;i++) {
+    if (strcmp(keyMappings[i].hostName,targetName) == 0) {
+      memcpy(resultKey, keyMappings[i].key, KEY_SIZE);
+      return true;
+    }
+  }
+  return false;
+}
+void encrypt(String plain,byte * cipher,byte * key,byte * iv) {
+    byte plaintext[plain.length()+1];
+    plain.getBytes((unsigned char *)plaintext, sizeof(plaintext));
+    byte iv_copy[BLOCK_SIZE];
+    memcpy(iv_copy,iv,BLOCK_SIZE);
+    aes.do_aes_encrypt(plaintext, sizeof(plaintext),cipher, key,KEY_SIZE,iv_copy);
+}
+String decrypt(byte * cipher,uint32_t size,byte * key,byte * iv) {
+  byte plain[size];
+  byte iv_copy[BLOCK_SIZE];
+  memcpy(iv_copy,iv,BLOCK_SIZE);
+  aes.do_aes_decrypt(cipher,aes.get_size(),plain,key,KEY_SIZE,iv);
+  return byteArrayToString(plain,size);
+}
 void handleSave()
 {
   String newSSID = _httpServer.arg("ssid");
@@ -122,65 +164,77 @@ void handleSave()
 void consensusPage()
 {
   String htmlContent = readFile("/consensus.html");
-  htmlContent.replace("Device", String(ESP.getChipId()));
   _httpServer.send(200, "text/html", htmlContent);
 }
-void sendColorToOtherDevices(const String &color);
-void handleConsensus()
-{
-  if (_httpServer.hasArg("color"))
-  {
-    String selectedColor = _httpServer.arg("color");
-    String identifier = _httpServer.arg("identifier");
 
-    // Process the selected color (update LED, store in EEPROM, etc.)
-    // ...
-    Serial.println("Original Color: " + selectedColor);
+byte decodeBase64Char(char c) {
+  if (c >= 'A' && c <= 'Z') return c - 'A';
+  if (c >= 'a' && c <= 'z') return c - 'a' + 26;
+  if (c >= '0' && c <= '9') return c - '0' + 52;
+  if (c == '+') return 62;
+  if (c == '/') return 63;
+  return 255; 
+}
 
-    // Encrypt
-    byte plaintext[selectedColor.length()+1];
-    byte plain_p[sizeof(plaintext) + (N_BLOCK - (sizeof(plaintext) % 16)) - 1];
-    selectedColor.getBytes((unsigned char *)plaintext, sizeof(plaintext));
+size_t base64_decode(const char* base64, byte* decoded) {
+  size_t i = 0;
+  size_t j = 0;
 
-    Serial.print("PLain text befıre: ");
-    aes.printArray(plaintext);
-    Serial.print("PLain text: ");
-    Serial.write(plaintext,sizeof(plaintext));
-    byte keyArray[] = "0123456789987654";
-    //aes.set_key(keyArray, sizeof(keyArray));
-    byte iv[16] = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
-                   0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
-
-    byte iv2[16] = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
-                   0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
-
-    byte encryptedColor[sizeof(plaintext) + (N_BLOCK - (sizeof(plaintext) % 16)) - 1];
-    aes.do_aes_encrypt(plaintext, sizeof(plaintext),encryptedColor, keyArray,16,iv);
-
-    //aes.clean();
-    // Print the encrypted color
-    Serial.print("Encrypted Color: ");
-    Serial.write(encryptedColor,sizeof(encryptedColor));
-
-    if (identifier == String(ESP.getChipId()))
-    {
-      sendColorToOtherDevices(selectedColor);
-      _httpServer.send(200, "text/plain", "color Consensus initiated");
-    }
-    else
-    {
-      Serial.println("got color change request from " + identifier + " color is " + selectedColor);
+  while (base64[i] && base64[i] != '=') {
+    byte b[4];
+    for (size_t k = 0; k < 4; k++) {
+      while (base64[i] && base64[i] <= ' ') i++;  
+      if (!base64[i] || base64[i] == '=') break;
+      b[k] = decodeBase64Char(base64[i++]);
     }
 
-    // Decrypt
-    aes.do_aes_decrypt(encryptedColor,aes.get_size(),plain_p,keyArray,16,iv2);
+    decoded[j++] = (b[0] << 2) | (b[1] >> 4);
+    if (b[2] != 255) decoded[j++] = (b[1] << 4) | (b[2] >> 2);
+    if (b[3] != 255) decoded[j++] = (b[2] << 6) | b[3];
+  }
 
-    // Print the decrypted color
-    
-    Serial.print("Decrypted Color: ");
-    Serial.write(plain_p,sizeof(plain_p));
+  return j;
+}
 
-    if (plain_p[0] == 'B' && plain_p[1] == 'L' && plain_p[2] == 'U' && plain_p[3] == 'E')
+void sendColorToOtherDevices(String &color);
+void handleConsensus2() {
+  if(!_httpServer.hasArg("identifier") || !_httpServer.hasArg("content") || !_httpServer.hasArg("iv")) {
+    Serial.println("missing args");
+    _httpServer.send(400, "text/plain", "Bad Request");
+  }
+  Serial.print("got handle consenys 2 from: ");
+  String identifier = _httpServer.arg("identifier");
+  Serial.print(identifier);
+  String content = _httpServer.arg("content");
+  String iv = _httpServer.arg("iv");
+
+  size_t maxDecodedSize = (content.length() * 3) / 4;
+
+  byte contentArray[maxDecodedSize];
+
+  int contentLength = base64_decode(content.c_str(), contentArray);
+
+  Serial.print("content length");
+  Serial.println(contentLength);
+    size_t maxDecodedSize2 = (iv.length() * 3) / 4;
+
+  byte ivArray[maxDecodedSize2];
+
+  int ivLength = base64_decode(iv.c_str(), ivArray);
+  Serial.println(identifier);
+
+  byte targetKey[KEY_SIZE];
+  if(!getKey(identifier.c_str(),targetKey)) {
+    Serial.print("could not find key of hostname: ");
+    Serial.println(identifier);
+    _httpServer.send(400, "text/plain", "Bad Request");
+    return;
+  }
+  String contentS = decrypt(contentArray,contentLength,targetKey,ivArray);
+  Serial.print("decrypted: ");
+  Serial.println(contentS);
+    // Check for the "BLUE" message
+    if (contentS.indexOf("BLUE") != -1)
     {
       // BLUE LED
       digitalWrite(bluePin, HIGH);
@@ -188,7 +242,7 @@ void handleConsensus()
       digitalWrite(greenPin, HIGH);
       Serial.println("Set BLUE variable to 1");
     }
-    else if (plain_p[0] == 'R' && plain_p[1] == 'E' && plain_p[2] == 'D')
+    else if (contentS.indexOf("RED") != -1)
     {
       // RED LED
       digitalWrite(bluePin, LOW);
@@ -196,7 +250,7 @@ void handleConsensus()
       digitalWrite(greenPin, HIGH);
       Serial.println("Set RED variable to 1");
     }
-    else if (plain_p[0] == 'G' && plain_p[1] == 'R' && plain_p[2] == 'E' && plain_p[3] == 'E' && plain_p[4] == 'N')
+    else if (contentS.indexOf("GREEN") != -1)
     {
       // GREEN LED
       digitalWrite(bluePin, LOW);
@@ -204,10 +258,53 @@ void handleConsensus()
       digitalWrite(greenPin, LOW);
       Serial.println("Set GREEN variable to 1");
     }
+}
+void handleConsensus()
+{
+  if (_httpServer.hasArg("color"))
+  {
+    String selectedColor = _httpServer.arg("color");
+    sendColorToOtherDevices(selectedColor);
+    Serial.println("Original Color: " + selectedColor);
+    if (selectedColor == "BLUE")
+    {
+      // BLUE LED
+      digitalWrite(bluePin, HIGH);
+      digitalWrite(redPin, HIGH);
+      digitalWrite(greenPin, HIGH);
+      Serial.println("Set BLUE variable to 1");
+    }
+    else if (selectedColor == "RED")
+    {
+      // RED LED
+      digitalWrite(bluePin, LOW);
+      digitalWrite(redPin, LOW);
+      digitalWrite(greenPin, HIGH);
+      Serial.println("Set RED variable to 1");
+    }
+    else if (selectedColor == "GREEN")
+    {
+      // GREEN LED
+      digitalWrite(bluePin, LOW);
+      digitalWrite(redPin, HIGH);
+      digitalWrite(greenPin, LOW);
+      Serial.println("Set GREEN variable to 1");
+    }
+     _httpServer.send(200, "text/plain", "setted color");
+     return;
+  }
+   _httpServer.send(400, "text/plain", "Bad Request");
+
+}
+
+void fillIv(byte * iv, int size) {
+  for (int i = 0; i < size; i++) {
+    iv[i] = random(256); 
   }
 }
 
-void sendColorToOtherDevices(const String &color)
+
+void sendColorToOtherDevices(String &color)
 {
   int n = MDNS.queryService("http", "tcp");
   for (int i = 0; i < n; ++i)
@@ -218,8 +315,24 @@ void sendColorToOtherDevices(const String &color)
       WiFiClient client;
       if (client.connect(MDNS.IP(i), 80))
       {
-        String payload = "color=" + color + "&identifier=" + String(ESP.getChipId());
-        client.print("POST /consensus HTTP/1.1\r\n");
+        String payload = "identifier=" + String(hostname) + String(ESP.getChipId())+".local" + "&content=";
+        byte ciphered_payload[color.length() + 1];
+        byte targetKey[KEY_SIZE];
+        if(!getKey(MDNS.hostname(i).c_str(),targetKey)) {
+          Serial.print("could not find key of hostname: ");
+          Serial.println(MDNS.hostname(i));
+          continue;
+        }
+        byte iv[BLOCK_SIZE];
+        fillIv(iv,BLOCK_SIZE);
+        encrypt(color,ciphered_payload,targetKey,iv);
+
+        String cipherString = base64::encode(ciphered_payload,sizeof(ciphered_payload));
+        String ivString = base64::encode(iv,BLOCK_SIZE);
+        payload+=cipherString;
+        payload+="&iv=";
+        payload+=ivString;
+        client.print("POST /consensus2 HTTP/1.1\r\n");
         client.print("Host: ");
         client.print(MDNS.hostname(i));
         client.print("\r\n");
@@ -241,85 +354,6 @@ void sendColorToOtherDevices(const String &color)
   }
 }
 
-void connectToServer()
-{
-  Serial.println("Connecting to server...");
-  if (client.connect(server_ip, server_port))
-  {
-    Serial.println("Connected to server");
-  }
-  else
-  {
-    Serial.println("Connection to server failed!");
-  }
-}
-
-void sendToServer(String message)
-{
-  if (client.connected())
-  {
-    Serial.println("Sending message to server...");
-    client.println(message);
-  }
-  else
-  {
-    Serial.println("Not connected to server. Reconnecting...");
-    connectToServer();
-    if (client.connected())
-    {
-      Serial.println("Sending message to server...");
-      client.println(message);
-    }
-    else
-    {
-      Serial.println("Failed to reconnect to server!");
-    }
-  }
-}
-
-void checkServerMessages()
-{
-
-  if (client.available())
-  {
-    String response = client.readStringUntil('\n');
-    Serial.print("Received message from server: ");
-    Serial.println(response);
-
-    // Check for the "BLUE" message
-    if (response.equals("BLUE"))
-    {
-      // BLUE LED
-      digitalWrite(bluePin, HIGH);
-      digitalWrite(redPin, HIGH);
-      digitalWrite(greenPin, HIGH);
-      Serial.println("Set BLUE variable to 1");
-    }
-    else if (response.equals("RED"))
-    {
-      // RED LED
-      digitalWrite(bluePin, LOW);
-      digitalWrite(redPin, LOW);
-      digitalWrite(greenPin, HIGH);
-      Serial.println("Set RED variable to 1");
-    }
-    else if (response.equals("GREEN"))
-    {
-      // GREEN LED
-      digitalWrite(bluePin, LOW);
-      digitalWrite(redPin, HIGH);
-      digitalWrite(greenPin, LOW);
-      Serial.println("Set GREEN variable to 1");
-    }
-    else
-    {
-      Serial.println("Message was: " + response);
-      digitalWrite(bluePin, LOW);
-      digitalWrite(redPin, HIGH);
-      digitalWrite(greenPin, HIGH);
-    }
-  }
-}
 
 void setup()
 {
@@ -355,6 +389,26 @@ void setup()
     Serial.println(WiFi.softAPIP());
   }
   WiFi.hostname(hostname);
+
+
+
+  snprintf(keyMappings[0].hostName,MAX_NAME,"MyESP15330671.local");
+  snprintf(keyMappings[1].hostName,MAX_NAME,"MyESP12889460.local");
+  snprintf(keyMappings[2].hostName,MAX_NAME,"MyESP15330598.local");
+
+  byte key[]="12345678901234561234567890123456";
+
+  memcpy(keyMappings[0].key,key,KEY_SIZE);
+  memcpy(keyMappings[1].key,key,KEY_SIZE);
+  memcpy(keyMappings[2].key,key,KEY_SIZE);
+
+  for(int i  =0;i<NETWORK_SIZE;i++) {
+    Serial.print("mapping host "+String(i) + " ");
+    Serial.println(keyMappings[i].hostName);
+    Serial.print("mapping key of " + String(i) + " " );
+    Serial.write(keyMappings[i].key,KEY_SIZE);
+    Serial.println("");
+  }
   WiFi.onWiFiModeChange([](const WiFiEventModeChange &mode)
                         {
       
@@ -380,6 +434,7 @@ void setup()
   _httpServer.on("/save", HTTP_POST, handleSave);
   _httpServer.on("/consensuspage", HTTP_GET, consensusPage);
   _httpServer.on("/consensus", HTTP_POST, handleConsensus);
+  _httpServer.on("/consensus2", HTTP_POST, handleConsensus2);
   _httpServer.begin();
 
   while (!MDNS.begin(hostname + String(ESP.getChipId())))
@@ -412,6 +467,7 @@ void loop()
 {
   MDNS.update();
   _httpServer.handleClient();
+    int n = MDNS.queryService("http", "tcp");
   // Check for server messages periodically
   // checkServerMessages();
 
