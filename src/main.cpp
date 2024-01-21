@@ -2,6 +2,7 @@
 #include "bignumber.h"
 #include <iostream>
 #include "string.h"
+#include "base64.hpp"
 
 using namespace std;
 
@@ -13,6 +14,8 @@ BigNumber drone_2_pub = 23;
 BigNumber drone_3_pub = 29;
 
 BigNumber drone_1_pri = 17;
+
+
 
 // // Custom 128-bit unsigned integer type
 // typedef struct {
@@ -243,6 +246,28 @@ void setup()
     Serial.print(res[i], HEX);
     Serial.print(" ");
   }
+
+  unsigned char string[] = "String example";
+  unsigned char base64[21]; // 20 bytes for output + 1 for null terminator
+
+  Serial.println("Before decode");
+
+  // encode_base64() places a null terminator automatically, because the output is a string
+  unsigned int base64_length = encode_base64(string, strlen((char *) string), base64);
+
+  Serial.println(base64_length); // Prints "20"
+  Serial.println((char *) base64); // Prints "U3RyaW5nIGV4YW1wbGU="
+
+  //unsigned char base64[] = "U3RyaW5nIGV4YW1wbGU=";
+  unsigned char aaa[15]; // 14 bytes for output + 1 for null terminator
+
+// decode_base64() does not place a null terminator, because the output is not always a string
+unsigned int string_length = decode_base64(base64, aaa);
+aaa[string_length] = '\0';
+
+Serial.println("After decode");
+Serial.println(string_length); // Prints "14"
+Serial.println((char *) aaa); // Prints "String example"
 
 
 
