@@ -38,3 +38,6 @@ dec_num = pow(enc_num, priv_key, n)
 print(dec_num)
 
 
+print((pow(2,64) * 11486121047088901126 + 9124816015455034375) == n)
+
+
