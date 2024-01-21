@@ -153,6 +153,8 @@ void setup()
 {
   Serial.begin(115200);
 
+  BigNumber::begin ();  // initialize library
+
   uint64_t plaintext = 42;
   Serial.print("Original Text: ");
   Serial.println(plaintext);
