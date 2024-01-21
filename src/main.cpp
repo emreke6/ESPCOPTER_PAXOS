@@ -1,5 +1,6 @@
 #include <Arduino.h>
 
+
 // Custom 128-bit unsigned integer type
 typedef struct {
   uint64_t low;
@@ -7,6 +8,24 @@ typedef struct {
 } uint128_t;
 
 #define RSA_BIT_SIZE 64
+
+void umul64wide (uint64_t a, uint64_t b, uint64_t *hi, uint64_t *lo)
+{
+    uint64_t a_lo = (uint64_t)(uint32_t)a;
+    uint64_t a_hi = a >> 32;
+    uint64_t b_lo = (uint64_t)(uint32_t)b;
+    uint64_t b_hi = b >> 32;
+
+    uint64_t p0 = a_lo * b_lo;
+    uint64_t p1 = a_lo * b_hi;
+    uint64_t p2 = a_hi * b_lo;
+    uint64_t p3 = a_hi * b_hi;
+
+    uint32_t cy = (uint32_t)(((p0 >> 32) + (uint32_t)p1 + (uint32_t)p2) >> 32);
+
+    *lo = p0 + (p1 << 32) + (p2 << 32);
+    *hi = p3 + (p1 >> 32) + (p2 >> 32) + cy;
+}
 
 // Function to calculate the modular exponentiation (base^exp % mod)
 uint128_t mod_exp(uint128_t base, uint128_t exp, uint128_t mod)
@@ -66,14 +85,22 @@ uint64_t mod_inverse(uint64_t a, uint64_t m)
   return (x % m + m) % m;
 }
 
-void generate_key_pair(uint64_t *public_key, uint64_t *private_key, uint128_t *modulus)
+void generate_key_pair(uint64_t *public_key, uint64_t *private_key, uint64_t *modulus_high,  uint64_t *modulus_low)
 {
   // Select two large prime numbers
   uint64_t p = 17978448171644331181ULL;
   uint64_t q = 11785307237444331011ULL;
 
-  modulus->low = p * q;
-  modulus->high = 0;
+  //modulus->low = p * q;
+  //modulus->high = 0;
+
+  umul64wide(p, q, modulus_high, modulus_low);
+
+  Serial.println("Modulus high");
+  Serial.println(*modulus_high);
+
+  Serial.println("Modulus low");
+  Serial.println(*modulus_low);
   uint64_t phi = (p - 1) * (q - 1);
 
   // Select public key (e) such that 1 < e < phi(n) and gcd(e, phi(n)) = 1
@@ -117,27 +144,27 @@ void setup()
   Serial.begin(115200);
 
   uint64_t public_key, private_key;
-  uint128_t modulus;
-  generate_key_pair(&public_key, &private_key, &modulus);
+  uint64_t modulus_low, modulus_high;
+  generate_key_pair(&public_key, &private_key, &modulus_low, &modulus_high);
 
-  Serial.print("Public Key: ");
-  Serial.println(public_key);
-  Serial.print("Private Key: ");
-  Serial.println(private_key);
+  // Serial.print("Public Key: ");
+  // Serial.println(public_key);
+  // Serial.print("Private Key: ");
+  // Serial.println(private_key);
 
-  uint64_t plaintext = 42;
-  Serial.print("Original Text: ");
-  Serial.println(plaintext);
+  // uint64_t plaintext = 42;
+  // Serial.print("Original Text: ");
+  // Serial.println(plaintext);
 
-  uint64_t ciphertext;
-  encrypt(plaintext, public_key, modulus, &ciphertext);
-  Serial.print("Encrypted Text: ");
-  Serial.println(ciphertext);
+  // uint64_t ciphertext;
+  // encrypt(plaintext, public_key, modulus, &ciphertext);
+  // Serial.print("Encrypted Text: ");
+  // Serial.println(ciphertext);
 
-  uint64_t decrypted_text;
-  decrypt(ciphertext, private_key, modulus, &decrypted_text);
-  Serial.print("Decrypted Text: ");
-  Serial.println(decrypted_text);
+  // uint64_t decrypted_text;
+  // decrypt(ciphertext, private_key, modulus, &decrypted_text);
+  // Serial.print("Decrypted Text: ");
+  // Serial.println(decrypted_text);
 }
 
 void loop()
