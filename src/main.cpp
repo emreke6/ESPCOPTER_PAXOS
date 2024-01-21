@@ -149,7 +149,8 @@ String decrypt(byte * cipher,uint32_t size,byte * key,byte * iv) {
   byte plain[size];
   byte iv_copy[BLOCK_SIZE];
   memcpy(iv_copy,iv,BLOCK_SIZE);
-  aes.do_aes_decrypt(cipher,aes.get_size(),plain,key,KEY_SIZE,iv);
+  aes.do_aes_decrypt(cipher,size,plain,key,KEY_SIZE,iv_copy);
+  Serial.write(plain,size);
   return byteArrayToString(plain,size);
 }
 void handleSave()
@@ -167,36 +168,92 @@ void consensusPage()
   _httpServer.send(200, "text/html", htmlContent);
 }
 
+int roundUpToMultipleOf4(int value) {
+    return ((value + 3) / 4) * 4;
+}
+
+
 
 void sendColorToOtherDevices(String &color);
 void handleConsensus2() {
-  if(!_httpServer.hasArg("identifier") || !_httpServer.hasArg("content") || !_httpServer.hasArg("iv")) {
-    Serial.println("missing args");
-    _httpServer.send(400, "text/plain", "Bad Request");
-    return;
+
+  String plain = _httpServer.arg("plain");
+  Serial.println(plain);
+  int currentIndex = 0;
+  String identifier = "",iv = "",content = "";
+  while (currentIndex < plain.length()) {
+    // Find the position of the next '&'
+    int nextAmpersand = plain.indexOf('&', currentIndex);
+
+    // Extract the current key-value pair
+    String keyValuePair;
+    if (nextAmpersand == -1) {
+      keyValuePair = plain.substring(currentIndex);
+      currentIndex = plain.length();
+    } else {
+      keyValuePair = plain.substring(currentIndex, nextAmpersand);
+      currentIndex = nextAmpersand + 1;
+    }
+
+    // Split the key-value pair into key and value
+    int equalsIndex = keyValuePair.indexOf('=');
+    if (equalsIndex != -1) {
+      String key = keyValuePair.substring(0, equalsIndex);
+      String value = keyValuePair.substring(equalsIndex + 1);
+
+      // Assign the value to the corresponding variable based on the key
+      if (key.equals("identifier")) {
+        identifier = value;
+      } else if (key.equals("content")) {
+        content = value;
+      } else if (key.equals("iv")) {
+        iv = value;
+      }
+    }
   }
   Serial.print("got handle consenys 2 from: ");
-  String identifier = _httpServer.arg("identifier");
-  Serial.print(identifier);
-  String content = _httpServer.arg("content");
-  String iv = _httpServer.arg("iv");
-
-
+  Serial.println(identifier);
+  Serial.print("content: ");
+  Serial.println(content);
+  Serial.print("iv: ");
+  Serial.println(iv);
   size_t maxDecodedSize = (content.length() * 3) / 4;
+  //maxDecodedSize = roundUpToMultipleOf4(maxDecodedSize) + 1;
 
   byte contentArray[maxDecodedSize];
 
-  int contentLength = decode_base64((unsigned char *)content.c_str(), contentArray);
+  int contentLength = decode_base64((unsigned char *)content.c_str(),content.length(), contentArray);
+  //contentArray[maxDecodedSize -1] = '\n';
 
-  Serial.print("content length");
-  Serial.println(contentLength);
+
+  Serial.print("content buffer: ");
+  Serial.write(contentArray,sizeof(contentArray));
+  Serial.println("");
+
+
     size_t maxDecodedSize2 = (iv.length() * 3) / 4;
+    //maxDecodedSize2 = roundUpToMultipleOf4(maxDecodedSize2) + 1;
 
   byte ivArray[maxDecodedSize2];
 
-  int ivLength = decode_base64((unsigned char *)iv.c_str(), ivArray);
-  Serial.println(identifier);
+  int ivLength = decode_base64((unsigned char *)iv.c_str(),iv.length(), ivArray);
+  if(ivLength != BLOCK_SIZE) {
+    Serial.println("ANAANI SIKIM");
+  }
+  Serial.print("iv hex: ");
+  for (int i = 0; i < 16; ++i) {
+    Serial.print(ivArray[i], HEX);
+    Serial.print(" ");
+  }
+  Serial.println("");
 
+    Serial.print("cipher hex: ");
+  for (int i = 0; i < 16; ++i) {
+    Serial.print(contentArray[i], HEX);
+    Serial.print(" ");
+  }
+  Serial.println("");
+  //ivArray[maxDecodedSize2 - 1] = '\n';
   byte targetKey[KEY_SIZE];
   if(!getKey(identifier.c_str(),targetKey)) {
     Serial.print("could not find key of hostname: ");
@@ -204,7 +261,7 @@ void handleConsensus2() {
     _httpServer.send(400, "text/plain", "Bad Request");
     return;
   }
-  String contentS = decrypt(contentArray,contentLength,targetKey,ivArray);
+  String contentS = decrypt(contentArray,sizeof(contentArray),targetKey,ivArray);
   Serial.print("decrypted: ");
   Serial.println(contentS);
     // Check for the "BLUE" message
@@ -317,6 +374,7 @@ void sendColorToOtherDevices(String &color)
         client.print(payload.length());
         client.print("\r\n\r\n");
         client.print(payload);
+        delay(100);
         client.stop();
         Serial.print("send post to ");
         Serial.println(MDNS.hostname(i));
