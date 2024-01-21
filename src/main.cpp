@@ -9,22 +9,25 @@ typedef struct {
 
 #define RSA_BIT_SIZE 64
 
-void umul64wide (uint64_t a, uint64_t b, uint64_t *hi, uint64_t *lo)
+void mult64to128(uint64_t op1, uint64_t op2, uint64_t *hi, uint64_t *lo)
 {
-    uint64_t a_lo = (uint64_t)(uint32_t)a;
-    uint64_t a_hi = a >> 32;
-    uint64_t b_lo = (uint64_t)(uint32_t)b;
-    uint64_t b_hi = b >> 32;
+    uint64_t u1 = (op1 & 0xffffffff);
+    uint64_t v1 = (op2 & 0xffffffff);
+    uint64_t t = (u1 * v1);
+    uint64_t w3 = (t & 0xffffffff);
+    uint64_t k = (t >> 32);
 
-    uint64_t p0 = a_lo * b_lo;
-    uint64_t p1 = a_lo * b_hi;
-    uint64_t p2 = a_hi * b_lo;
-    uint64_t p3 = a_hi * b_hi;
+    op1 >>= 32;
+    t = (op1 * v1) + k;
+    k = (t & 0xffffffff);
+    uint64_t w1 = (t >> 32);
 
-    uint32_t cy = (uint32_t)(((p0 >> 32) + (uint32_t)p1 + (uint32_t)p2) >> 32);
+    op2 >>= 32;
+    t = (u1 * op2) + k;
+    k = (t >> 32);
 
-    *lo = p0 + (p1 << 32) + (p2 << 32);
-    *hi = p3 + (p1 >> 32) + (p2 >> 32) + cy;
+    *hi = (op1 * op2) + w1 + k;
+    *lo = (t << 32) + w3;
 }
 
 // Function to calculate the modular exponentiation (base^exp % mod)
@@ -94,13 +97,15 @@ void generate_key_pair(uint64_t *public_key, uint64_t *private_key, uint64_t *mo
   //modulus->low = p * q;
   //modulus->high = 0;
 
-  umul64wide(p, q, modulus_high, modulus_low);
+  mult64to128(p, q, (uint64_t*)modulus_high, (uint64_t*)modulus_low);
 
   Serial.println("Modulus high");
   Serial.println(*modulus_high);
 
   Serial.println("Modulus low");
   Serial.println(*modulus_low);
+
+
   uint64_t phi = (p - 1) * (q - 1);
 
   // Select public key (e) such that 1 < e < phi(n) and gcd(e, phi(n)) = 1
