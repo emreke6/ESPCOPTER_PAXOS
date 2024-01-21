@@ -1,30 +1,42 @@
 #include <Arduino.h>
-#include <inttypes.h>
-#include <stdlib.h>
-#include <string.h>
-#include <math.h>
 
-#define RSA_BIT_SIZE 16
+// Custom 128-bit unsigned integer type
+typedef struct {
+  uint64_t low;
+  uint64_t high;
+} uint128_t;
+
+#define RSA_BIT_SIZE 64
 
 // Function to calculate the modular exponentiation (base^exp % mod)
-uint16_t mod_exp(uint16_t base, uint16_t exp, uint16_t mod)
+uint128_t mod_exp(uint128_t base, uint128_t exp, uint128_t mod)
 {
-  uint16_t result = 1;
-  base = base % mod;
+  uint128_t result;
+  result.low = 1;
+  result.high = 0;
+  base.low = base.low % mod.low;
 
-  while (exp > 0)
+  while (exp.low > 0 || exp.high > 0)
   {
-    if (exp % 2 == 1)
-      result = (result * base) % mod;
+    if (exp.low % 2 == 1)
+    {
+      result.low = (result.low * base.low) % mod.low;
+      result.high = (result.high * base.low + result.low * base.high + result.high * base.low) % mod.low;
+    }
 
-    exp = exp >> 1;
-    base = (base * base) % mod;
+    exp.low = exp.low >> 1;
+    exp.high = exp.high >> 1;
+
+    uint64_t temp = (base.low * base.high) % mod.low;
+    base.low = (base.low * base.low) % mod.low;
+    base.high = ((temp + temp) * base.high) % mod.low;
   }
+
   return result;
 }
 
 // Function to perform the extended Euclidean algorithm
-int extended_gcd(int a, int b, int *x, int *y)
+uint64_t extended_gcd(uint64_t a, uint64_t b, uint64_t *x, uint64_t *y)
 {
   if (a == 0)
   {
@@ -33,8 +45,8 @@ int extended_gcd(int a, int b, int *x, int *y)
     return b;
   }
 
-  int x1, y1;
-  int gcd = extended_gcd(b % a, a, &x1, &y1);
+  uint64_t x1, y1;
+  uint64_t gcd = extended_gcd(b % a, a, &x1, &y1);
 
   *x = y1 - (b / a) * x1;
   *y = x1;
@@ -43,10 +55,10 @@ int extended_gcd(int a, int b, int *x, int *y)
 }
 
 // Function to calculate the modular inverse
-int mod_inverse(int a, int m)
+uint64_t mod_inverse(uint64_t a, uint64_t m)
 {
-  int x, y;
-  int gcd = extended_gcd(a, m, &x, &y);
+  uint64_t x, y;
+  uint64_t gcd = extended_gcd(a, m, &x, &y);
 
   if (gcd != 1)
     return -1; // modular inverse does not exist
@@ -54,56 +66,78 @@ int mod_inverse(int a, int m)
   return (x % m + m) % m;
 }
 
-void generate_key_pair(uint16_t *public_key, uint16_t *private_key, uint16_t *modulus)
+void generate_key_pair(uint64_t *public_key, uint64_t *private_key, uint128_t *modulus)
 {
   // Select two large prime numbers
-  uint16_t p = 61;
-  uint16_t q = 53;
+  uint64_t p = 17978448171644331181ULL;
+  uint64_t q = 11785307237444331011ULL;
 
-  *modulus = p * q;
-  uint16_t phi = (p - 1) * (q - 1);
+  modulus->low = p * q;
+  modulus->high = 0;
+  uint64_t phi = (p - 1) * (q - 1);
 
   // Select public key (e) such that 1 < e < phi(n) and gcd(e, phi(n)) = 1
-  uint16_t public_key_e = 17;
+  uint64_t public_key_e = 17;
 
   // Calculate private key (d) using modular inverse of e mod phi(n)
-  uint16_t private_key_d = mod_inverse(public_key_e, phi);
+  uint64_t private_key_d = mod_inverse(public_key_e, phi);
 
   *public_key = public_key_e;
   *private_key = private_key_d;
 }
 
-void encrypt(uint16_t plaintext, uint16_t public_key, uint16_t modulus, uint16_t *ciphertext)
+void encrypt(uint64_t plaintext, uint64_t public_key, uint128_t modulus, uint64_t *ciphertext)
 {
-  *ciphertext = mod_exp(plaintext, public_key, modulus);
+  uint128_t base, exp, mod;
+  base.low = plaintext;
+  base.high = 0;
+  exp.low = public_key;
+  exp.high = 0;
+  mod = modulus;
+
+  uint128_t result = mod_exp(base, exp, mod);
+  *ciphertext = result.low;
 }
 
-void decrypt(uint16_t ciphertext, uint16_t private_key, uint16_t modulus, uint16_t *decrypted_text)
+void decrypt(uint64_t ciphertext, uint64_t private_key, uint128_t modulus, uint64_t *decrypted_text)
 {
-  *decrypted_text = mod_exp(ciphertext, private_key, modulus);
+  uint128_t base, exp, mod;
+  base.low = ciphertext;
+  base.high = 0;
+  exp.low = private_key;
+  exp.high = 0;
+  mod = modulus;
+
+  uint128_t result = mod_exp(base, exp, mod);
+  *decrypted_text = result.low;
 }
 
 void setup()
 {
   Serial.begin(115200);
 
-  uint16_t public_key, private_key, modulus;
+  uint64_t public_key, private_key;
+  uint128_t modulus;
   generate_key_pair(&public_key, &private_key, &modulus);
 
-  Serial.println("Public Key: " + String(public_key));
-  Serial.println("Private Key: " + String(private_key));
-  Serial.println("Modulus: " + String(modulus));
+  Serial.print("Public Key: ");
+  Serial.println(public_key);
+  Serial.print("Private Key: ");
+  Serial.println(private_key);
 
-  uint16_t plaintext = 42;
-  Serial.println("Original Text: " + String(plaintext));
+  uint64_t plaintext = 42;
+  Serial.print("Original Text: ");
+  Serial.println(plaintext);
 
-  uint16_t ciphertext;
+  uint64_t ciphertext;
   encrypt(plaintext, public_key, modulus, &ciphertext);
-  Serial.println("Encrypted Text: " + String(ciphertext));
+  Serial.print("Encrypted Text: ");
+  Serial.println(ciphertext);
 
-  uint16_t decrypted_text;
+  uint64_t decrypted_text;
   decrypt(ciphertext, private_key, modulus, &decrypted_text);
-  Serial.println("Decrypted Text: " + String(decrypted_text));
+  Serial.print("Decrypted Text: ");
+  Serial.println(decrypted_text);
 }
 
 void loop()
