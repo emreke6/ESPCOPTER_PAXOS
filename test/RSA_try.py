@@ -1,3 +1,5 @@
+import random
+
 def egcd(a, b):
     x,y, u,v = 0,1, 1,0
     while a != 0:
@@ -37,7 +39,17 @@ dec_num = pow(enc_num, priv_key, n)
 
 print(dec_num)
 
+print("phi n: ", phi_n)
 
-print((pow(2,64) * 11486121047088901126 + 9124816015455034375) == n)
+
+random_int = random.randint(5, n)
+random_pow = random.randint(5, n)
+
+print("random int: ", random_int)
+print("random pow: ", random_pow)
+
+print("res: ", pow(random_int, random_pow, n))
+
+
 
 
