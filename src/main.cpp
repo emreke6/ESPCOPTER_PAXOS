@@ -161,10 +161,10 @@ void generate_key_pair(uint128_t *public_key, uint128_t *private_key)
 
   // Calculate private key (d) using modular inverse of e mod phi(n)
   BigNumber public_key_big = public_key_e;
-  BigNumber RSA_PHI_big = RSA_PHI->high << 64 + RSA_PHI->low;
+  BigNumber RSA_PHI_big = (RSA_PHI->high << 64 + RSA_PHI->low);
 
   Serial.println("RSA_PHI_big ");
-  Serial.println(to_string(RSA_PHI_big));
+  printf("%s" , (RSA_PHI_big).getString());
 
   Serial.println("RSA_PHI low");
   Serial.println(RSA_PHI->low);
@@ -209,9 +209,9 @@ void setup()
 {
   Serial.begin(115200);
 
-  uint64_t public_key, private_key;
-  uint128_t modulus;
-  generate_key_pair(&public_key, &private_key, &modulus);
+  uint128_t public_key, private_key;
+  //uint128_t modulus;
+  generate_key_pair(&public_key, &private_key);
 
   // Serial.print("Public Key: ");
   // Serial.println(public_key);
