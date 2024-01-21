@@ -5,99 +5,107 @@
 
 using namespace std;
 
+// BigNumber p = 17978448171644331181ULL;
+// BigNumber q = 11785307237444331011ULL;
+BigNumber public_modulus = BigNumber("211881535355297736509781884103072553991");
+BigNumber drone_1_pub = BigNumber("124636197267822197929422428643519936353");
+BigNumber drone_2_pub = 23;
+BigNumber drone_3_pub = 29;
 
-// Custom 128-bit unsigned integer type
-typedef struct {
-  uint64_t low;
-  uint64_t high;
-} uint128_t;
+BigNumber drone_1_pri = 17;
 
-#define RSA_BIT_SIZE 64
+// // Custom 128-bit unsigned integer type
+// typedef struct {
+//   uint64_t low;
+//   uint64_t high;
+// } uint128_t;
 
-uint128_t* RSA_N;
-uint128_t* RSA_PHI;
+// #define RSA_BIT_SIZE 64
 
-BigNumber mod(const BigNumber& b, const BigNumber& a) {
-    return b - (b / a) * a;
-}
+// uint128_t* RSA_N;
+// uint128_t* RSA_PHI;
 
-BigNumber egcd(BigNumber a, BigNumber b, BigNumber& x, BigNumber& y) {
-    x = 0; 
-    y = 1;
-    BigNumber u = 1, v = 0;
+// BigNumber mod(const BigNumber& b, const BigNumber& a) {
+//     return b - (b / a) * a;
+// }
 
-    while (!(a == 0)) {
-        BigNumber q = b / a;
-        BigNumber r = mod(b, a);
-        BigNumber m = x - u * q;
-        BigNumber n = y - v * q;
-        b = a;
-        a = r;
-        x = u;
-        y = v;
-        u = m;
-        v = n;
-    }
+// BigNumber egcd(BigNumber a, BigNumber b, BigNumber& x, BigNumber& y) {
+//     x = 0; 
+//     y = 1;
+//     BigNumber u = 1, v = 0;
 
-    return b;
-}
+//     while (!(a == 0)) {
+//         BigNumber q = b / a;
+//         BigNumber r = mod(b, a);
+//         BigNumber m = x - u * q;
+//         BigNumber n = y - v * q;
+//         b = a;
+//         a = r;
+//         x = u;
+//         y = v;
+//         u = m;
+//         v = n;
+//     }
 
-BigNumber modinv(BigNumber a, BigNumber b) {
-    BigNumber x = 0, y = 0;
-    BigNumber gcd = egcd(a, b, x, y);
-    if (!(gcd == 1)) {
-        return 0;
-    }
-    return mod(x, b) < 0 ? mod(x, b) + b : mod(x, b);
-}
+//     return b;
+// }
 
-void mult64to128(uint64_t op1, uint64_t op2, uint64_t *hi, uint64_t *lo)
-{
-    uint64_t u1 = (op1 & 0xffffffff);
-    uint64_t v1 = (op2 & 0xffffffff);
-    uint64_t t = (u1 * v1);
-    uint64_t w3 = (t & 0xffffffff);
-    uint64_t k = (t >> 32);
+// BigNumber modinv(BigNumber a, BigNumber b) {
+//     BigNumber x = 0, y = 0;
+//     BigNumber gcd = egcd(a, b, x, y);
+//     if (!(gcd == 1)) {
+//         return 0;
+//     }
+//     return mod(x, b) < 0 ? mod(x, b) + b : mod(x, b);
+// }
 
-    op1 >>= 32;
-    t = (op1 * v1) + k;
-    k = (t & 0xffffffff);
-    uint64_t w1 = (t >> 32);
+// void mult64to128(uint64_t op1, uint64_t op2, uint64_t *hi, uint64_t *lo)
+// {
+//     uint64_t u1 = (op1 & 0xffffffff);
+//     uint64_t v1 = (op2 & 0xffffffff);
+//     uint64_t t = (u1 * v1);
+//     uint64_t w3 = (t & 0xffffffff);
+//     uint64_t k = (t >> 32);
 
-    op2 >>= 32;
-    t = (u1 * op2) + k;
-    k = (t >> 32);
+//     op1 >>= 32;
+//     t = (op1 * v1) + k;
+//     k = (t & 0xffffffff);
+//     uint64_t w1 = (t >> 32);
 
-    *hi = (op1 * op2) + w1 + k;
-    *lo = (t << 32) + w3;
-}
+//     op2 >>= 32;
+//     t = (u1 * op2) + k;
+//     k = (t >> 32);
 
-// Function to calculate the modular exponentiation (base^exp % mod)
-uint128_t mod_exp(uint128_t base, uint128_t exp, uint128_t mod)
-{
-  uint128_t result;
-  result.low = 1;
-  result.high = 0;
-  base.low = base.low % mod.low;
+//     *hi = (op1 * op2) + w1 + k;
+//     *lo = (t << 32) + w3;
+// }
 
-  while (exp.low > 0 || exp.high > 0)
-  {
-    if (exp.low % 2 == 1)
-    {
-      result.low = (result.low * base.low) % mod.low;
-      result.high = (result.high * base.low + result.low * base.high + result.high * base.low) % mod.low;
-    }
+// // Function to calculate the modular exponentiation (base^exp % mod)
+// uint128_t mod_exp(uint128_t base, uint128_t exp, uint128_t mod)
+// {
+//   uint128_t result;
+//   result.low = 1;
+//   result.high = 0;
+//   base.low = base.low % mod.low;
 
-    exp.low = exp.low >> 1;
-    exp.high = exp.high >> 1;
+//   while (exp.low > 0 || exp.high > 0)
+//   {
+//     if (exp.low % 2 == 1)
+//     {
+//       result.low = (result.low * base.low) % mod.low;
+//       result.high = (result.high * base.low + result.low * base.high + result.high * base.low) % mod.low;
+//     }
 
-    uint64_t temp = (base.low * base.high) % mod.low;
-    base.low = (base.low * base.low) % mod.low;
-    base.high = ((temp + temp) * base.high) % mod.low;
-  }
+//     exp.low = exp.low >> 1;
+//     exp.high = exp.high >> 1;
 
-  return result;
-}
+//     uint64_t temp = (base.low * base.high) % mod.low;
+//     base.low = (base.low * base.low) % mod.low;
+//     base.high = ((temp + temp) * base.high) % mod.low;
+//   }
+
+//   return result;
+// }
 
 // // Function to perform the extended Euclidean algorithm
 // uint64_t extended_gcd(uint64_t a, uint64_t b, uint64_t *x, uint64_t *y)
@@ -130,107 +138,33 @@ uint128_t mod_exp(uint128_t base, uint128_t exp, uint128_t mod)
 //   return (x % m + m) % m;
 // }
 
-void generate_key_pair(uint128_t *public_key, uint128_t *private_key)
+
+BigNumber encrypt(BigNumber plaintext, BigNumber public_key, BigNumber modulus)
 {
-  // Select two large prime numbers
-  uint64_t p = 17978448171644331181ULL;
-  uint64_t q = 11785307237444331011ULL;
-
-  //modulus->low = p * q;
-  //modulus->high = 0;
-
-  mult64to128(p, q, (uint64_t*)RSA_N->high, (uint64_t*)RSA_N->low);
-
-  Serial.println("Modulus high");
-  Serial.println(RSA_N->high);
-
-  Serial.println("Modulus low");
-  Serial.println(RSA_N->low);
-
-
-  mult64to128(p-1, q-1, (uint64_t*)RSA_PHI->high, (uint64_t*)RSA_PHI->low);
-
-  Serial.println("RSA_PHI high");
-  Serial.println(RSA_PHI->high);
-
-  Serial.println("RSA_PHI low");
-  Serial.println(RSA_PHI->low);
-
-  // Select public key (e) such that 1 < e < phi(n) and gcd(e, phi(n)) = 1
-  uint64_t public_key_e = 17;
-
-  // Calculate private key (d) using modular inverse of e mod phi(n)
-  BigNumber public_key_big = public_key_e;
-  BigNumber RSA_PHI_big = (RSA_PHI->high << 64 + RSA_PHI->low);
-
-  Serial.println("RSA_PHI_big ");
-  printf("%s" , (RSA_PHI_big).getString());
-
-  Serial.println("RSA_PHI low");
-  Serial.println(RSA_PHI->low);
-  BigNumber private_key_d = modinv(public_key_e, RSA_PHI_big);
-
-  
-
-  public_key->high = public_key_e >> 32;
-  public_key->low = public_key_e & 0xFFFFFFFF;
-
-  private_key->high = (uint64_t)stoi((private_key_d/(pow(2,32))).getString());
-  private_key->low = (uint64_t)stoi((private_key_d).getString());
+  return plaintext.powMod(public_key, modulus);
 }
 
-void encrypt(uint64_t plaintext, uint64_t public_key, uint128_t modulus, uint64_t *ciphertext)
+BigNumber decrypt(BigNumber ciphertext, BigNumber private_key, BigNumber modulus)
 {
-  uint128_t base, exp, mod;
-  base.low = plaintext;
-  base.high = 0;
-  exp.low = public_key;
-  exp.high = 0;
-  mod = modulus;
-
-  uint128_t result = mod_exp(base, exp, mod);
-  *ciphertext = result.low;
-}
-
-void decrypt(uint64_t ciphertext, uint64_t private_key, uint128_t modulus, uint64_t *decrypted_text)
-{
-  uint128_t base, exp, mod;
-  base.low = ciphertext;
-  base.high = 0;
-  exp.low = private_key;
-  exp.high = 0;
-  mod = modulus;
-
-  uint128_t result = mod_exp(base, exp, mod);
-  *decrypted_text = result.low;
+  return ciphertext.powMod(private_key, modulus);
 }
 
 void setup()
 {
   Serial.begin(115200);
 
-  uint128_t public_key, private_key;
-  //uint128_t modulus;
-  generate_key_pair(&public_key, &private_key);
+  uint64_t plaintext = 42;
+  Serial.print("Original Text: ");
+  Serial.println(plaintext);
 
-  // Serial.print("Public Key: ");
-  // Serial.println(public_key);
-  // Serial.print("Private Key: ");
-  // Serial.println(private_key);
+  BigNumber ctext = encrypt(plaintext, drone_1_pub, public_modulus);
+  Serial.print("Encrypted Text: ");
+  Serial.println(ctext);
 
-  // uint64_t plaintext = 42;
-  // Serial.print("Original Text: ");
-  // Serial.println(plaintext);
 
-  // uint64_t ciphertext;
-  // encrypt(plaintext, public_key, modulus, &ciphertext);
-  // Serial.print("Encrypted Text: ");
-  // Serial.println(ciphertext);
-
-  // uint64_t decrypted_text;
-  // decrypt(ciphertext, private_key, modulus, &decrypted_text);
-  // Serial.print("Decrypted Text: ");
-  // Serial.println(decrypted_text);
+  BigNumber ptext = decrypt(ctext, drone_1_pri, public_modulus);
+  Serial.print("Decrypted Text: ");
+  Serial.println(ptext);
 }
 
 void loop()

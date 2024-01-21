@@ -28,6 +28,7 @@ phi_n = (p-1) * (q-1)
 
 priv_key = 17
 pub_key = modinv(priv_key, phi_n)
+print("pub,", pub_key)
 
 try_num = 41
 
