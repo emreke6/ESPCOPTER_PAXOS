@@ -3,9 +3,8 @@
 #include <ESP8266HTTPUpdateServer.h>
 #include <ESP8266mDNS.h>
 #include <FS.h>
-#include <Base64.h>
+#include "base64.hpp"
 #include "AES.h" // Include the AES library
-#include <base64.h>
 // const char* ssid = "Emre6";
 // const char* password = "emreke66";
 #define BLOCK_SIZE 16
@@ -125,6 +124,7 @@ void persistCredentials(const char *ssid, const char *password)
 String byteArrayToString(byte arr[], int size) {
   String result = "";
   for (int i = 0; i < size; i++) {
+    if(arr[i] == 0) break;
     result += char(arr[i]);
   }
   return result;
@@ -167,40 +167,13 @@ void consensusPage()
   _httpServer.send(200, "text/html", htmlContent);
 }
 
-byte decodeBase64Char(char c) {
-  if (c >= 'A' && c <= 'Z') return c - 'A';
-  if (c >= 'a' && c <= 'z') return c - 'a' + 26;
-  if (c >= '0' && c <= '9') return c - '0' + 52;
-  if (c == '+') return 62;
-  if (c == '/') return 63;
-  return 255; 
-}
-
-size_t base64_decode(const char* base64, byte* decoded) {
-  size_t i = 0;
-  size_t j = 0;
-
-  while (base64[i] && base64[i] != '=') {
-    byte b[4];
-    for (size_t k = 0; k < 4; k++) {
-      while (base64[i] && base64[i] <= ' ') i++;  
-      if (!base64[i] || base64[i] == '=') break;
-      b[k] = decodeBase64Char(base64[i++]);
-    }
-
-    decoded[j++] = (b[0] << 2) | (b[1] >> 4);
-    if (b[2] != 255) decoded[j++] = (b[1] << 4) | (b[2] >> 2);
-    if (b[3] != 255) decoded[j++] = (b[2] << 6) | b[3];
-  }
-
-  return j;
-}
 
 void sendColorToOtherDevices(String &color);
 void handleConsensus2() {
   if(!_httpServer.hasArg("identifier") || !_httpServer.hasArg("content") || !_httpServer.hasArg("iv")) {
     Serial.println("missing args");
     _httpServer.send(400, "text/plain", "Bad Request");
+    return;
   }
   Serial.print("got handle consenys 2 from: ");
   String identifier = _httpServer.arg("identifier");
@@ -208,11 +181,12 @@ void handleConsensus2() {
   String content = _httpServer.arg("content");
   String iv = _httpServer.arg("iv");
 
+
   size_t maxDecodedSize = (content.length() * 3) / 4;
 
   byte contentArray[maxDecodedSize];
 
-  int contentLength = base64_decode(content.c_str(), contentArray);
+  int contentLength = decode_base64((unsigned char *)content.c_str(), contentArray);
 
   Serial.print("content length");
   Serial.println(contentLength);
@@ -220,7 +194,7 @@ void handleConsensus2() {
 
   byte ivArray[maxDecodedSize2];
 
-  int ivLength = base64_decode(iv.c_str(), ivArray);
+  int ivLength = decode_base64((unsigned char *)iv.c_str(), ivArray);
   Serial.println(identifier);
 
   byte targetKey[KEY_SIZE];
@@ -326,12 +300,14 @@ void sendColorToOtherDevices(String &color)
         byte iv[BLOCK_SIZE];
         fillIv(iv,BLOCK_SIZE);
         encrypt(color,ciphered_payload,targetKey,iv);
-
-        String cipherString = base64::encode(ciphered_payload,sizeof(ciphered_payload));
-        String ivString = base64::encode(iv,BLOCK_SIZE);
-        payload+=cipherString;
+        byte cipherEncoded[sizeof(ciphered_payload) * 4 / 3 + 1];
+      encode_base64(ciphered_payload,sizeof(ciphered_payload),cipherEncoded);
+              byte ivEncoded[sizeof(iv) * 4 / 3 + 1];
+      encode_base64(iv,sizeof(iv),ivEncoded);
+        payload+=byteArrayToString(cipherEncoded,sizeof(cipherEncoded));
         payload+="&iv=";
-        payload+=ivString;
+        payload+=byteArrayToString(ivEncoded,sizeof(ivEncoded));
+        Serial.println(payload);
         client.print("POST /consensus2 HTTP/1.1\r\n");
         client.print("Host: ");
         client.print(MDNS.hostname(i));
@@ -456,6 +432,28 @@ void setup()
   digitalWrite(bluePin, LOW);
   digitalWrite(redPin, HIGH);
   digitalWrite(greenPin, HIGH);
+
+  String s = "sdfghjkjhgfewrtyhujukjhgfdsdfghjk";
+  byte cipher[s.length()];
+  byte iv[BLOCK_SIZE];
+  fillIv(iv,BLOCK_SIZE);
+  encrypt(s,cipher,keyMappings[0].key,iv);
+  Serial.print("cipher array: ");
+  Serial.write(cipher,sizeof(cipher));
+  Serial.println("");
+  byte cipherEncoded[sizeof(cipher) * 4 / 3 + 1];
+  encode_base64(cipher,sizeof(cipher),cipherEncoded);
+  size_t maxDecodedSize = (sizeof(cipherEncoded)* 3) / 4;
+  byte contentArray[maxDecodedSize];
+
+  decode_base64(cipherEncoded,contentArray);
+  //contentArray[maxDecodedSize - 1] = '\0';
+  Serial.print("decoded cipher");
+  Serial.write(contentArray,maxDecodedSize);
+  Serial.println("");
+  String decryyed = decrypt(cipher,sizeof(cipher),keyMappings[0].key,iv);
+  Serial.print("decryerd: ");
+  Serial.println(decryyed);
 
   // Connect to the server
   // connectToServer();
