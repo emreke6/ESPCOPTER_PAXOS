@@ -3,6 +3,8 @@
         "*.tcc": "cpp",
         "iostream": "cpp",
         "initializer_list": "cpp",
-        "ranges": "cpp"
+        "ranges": "cpp",
+        "cmath": "cpp",
+        "functional": "cpp"
     }
 }
