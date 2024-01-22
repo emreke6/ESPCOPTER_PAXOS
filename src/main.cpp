@@ -9,6 +9,7 @@
 // const char* password = "emreke66";
 #define BLOCK_SIZE 16
 #define KEY_SIZE 32
+#define CIPHER_SIZE 33
 #define MAX_NAME 256
 #define NETWORK_SIZE 3
 struct keyMapping {
@@ -265,7 +266,7 @@ void handleConsensus2() {
   Serial.print("decrypted: ");
   Serial.println(contentS);
     // Check for the "BLUE" message
-    if (contentS.indexOf("BLUE") != -1)
+    if (contentS.indexOf("BLU") != -1)
     {
       // BLUE LED
       digitalWrite(bluePin, HIGH);
@@ -347,7 +348,7 @@ void sendColorToOtherDevices(String &color)
       if (client.connect(MDNS.IP(i), 80))
       {
         String payload = "identifier=" + String(hostname) + String(ESP.getChipId())+".local" + "&content=";
-        byte ciphered_payload[color.length() + (N_BLOCK - ((color.length() + 1) % 16))];
+        byte ciphered_payload[CIPHER_SIZE];
         byte targetKey[KEY_SIZE];
         if(!getKey(MDNS.hostname(i).c_str(),targetKey)) {
           Serial.print("could not find key of hostname: ");
