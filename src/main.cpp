@@ -347,7 +347,7 @@ void sendColorToOtherDevices(String &color)
       if (client.connect(MDNS.IP(i), 80))
       {
         String payload = "identifier=" + String(hostname) + String(ESP.getChipId())+".local" + "&content=";
-        byte ciphered_payload[color.length() + 1];
+        byte ciphered_payload[color.length() + (N_BLOCK - ((color.length() + 1) % 16))];
         byte targetKey[KEY_SIZE];
         if(!getKey(MDNS.hostname(i).c_str(),targetKey)) {
           Serial.print("could not find key of hostname: ");
