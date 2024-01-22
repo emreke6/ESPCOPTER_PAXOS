@@ -1,16 +1,53 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>WiFi Configuration</title>
+    <style>
+        body {
+            background-color: #f2f2f2;
+            font-family: 'Arial', sans-serif;
+            color: #333333;
+            text-align: center;
+            margin: 0;
+            padding: 0;
+        }
+
+        h2 {
+            color: #009688;
+            margin-top: 20px;
+        }
+
+        p {
+            color: #555555;
+        }
+
+        a {
+            display: inline-block;
+            margin: 15px;
+            padding: 10px 20px;
+            text-decoration: none;
+            color: #ffffff;
+            background-color: #009688;
+            border-radius: 5px;
+            transition: background-color 0.3s;
+        }
+
+        a:hover {
+            background-color: #00796b;
+        }
+    </style>
 </head>
+
 <body>
     <h2>WiFi Configuration</h2>
     <p>Welcome! You are connected to the ESP8266 Access Point.</p>
     
     <!-- Link to the page for changing WiFi credentials -->
-    <a href="/config">Connect to a AP as STA</a>
-    <a href="/consensuspage">Color consensus</a>
+    <a href="/config">Connect to a WiFi Network</a>
+    <a href="/consensuspage">Color Consensus</a>
 </body>
+
 </html>

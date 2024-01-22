@@ -1,10 +1,70 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Get color Color</title>
+    <title>Get Color</title>
+    <style>
+        body {
+            background-color: #f0f0f0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            text-align: center;
+            margin: 0;
+            padding: 0;
+        }
+
+        h2 {
+            color: #333333;
+            background-color: #4caf50;
+            padding: 20px;
+            margin: 0;
+        }
+
+        form {
+            max-width: 400px;
+            margin: 20px auto;
+            background-color: #ffffff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333333;
+            font-size: 16px;
+        }
+
+        select {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 15px;
+            box-sizing: border-box;
+            border: 1px solid #cccccc;
+            border-radius: 4px;
+            font-size: 14px;
+            background-color: #f9f9f9;
+            color: #333333;
+        }
+
+        input[type="submit"] {
+            background-color: #4caf50;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+
+        input[type="submit"]:hover {
+            background-color: #45a049;
+        }
+    </style>
 </head>
+
 <body>
     <h2>Preferred Color</h2>
     <form action="/consensus" method="post">
@@ -12,10 +72,11 @@
         <select id="color" name="color">
             <option value="GREEN">GREEN</option>
             <option value="RED">RED</option>
-            <option value="BLU">BLUE</option>
+            <option value="BLUE">BLUE</option>
         </select>
         <br>
-        <input type="submit" value="Get color">
+        <input type="submit" value="Get Color">
     </form>
 </body>
+
 </html>
