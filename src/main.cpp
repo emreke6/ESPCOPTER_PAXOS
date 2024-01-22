@@ -321,6 +321,18 @@ void checkServerMessages()
   }
 }
 
+String byteArrayToString(byte arr[], int size)
+{
+  String result = "";
+  for (int i = 0; i < size; i++)
+  {
+    if (arr[i] == 0)
+      break;
+    result += char(arr[i]);
+  }
+  return result;
+}
+
 void setup()
 {
   Serial.begin(115200);
@@ -406,6 +418,35 @@ void setup()
   // connectToServer();
 
   // decrypt_with_aes_cbc();
+
+  String color_try = "RED";
+
+  byte keyArray[] = "0123456789987654";
+  //aes.set_key(keyArray, sizeof(keyArray));
+  byte iv[16] = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+                  0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+
+  byte iv2[16] = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+                  0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+
+
+  byte plaintext[color_try.length()+1];
+  color_try.getBytes((unsigned char *)plaintext, sizeof(plaintext));
+  byte encryptedColor[sizeof(plaintext) + (N_BLOCK - (sizeof(plaintext) % 16)) - 1];
+  aes.do_aes_encrypt(plaintext, sizeof(color_try),encryptedColor, keyArray,16,iv);
+
+
+  byte plain_p[sizeof(plaintext) + (N_BLOCK - (sizeof(plaintext) % 16)) - 1];
+  aes.do_aes_decrypt(encryptedColor,aes.get_size(),plain_p,keyArray,16,iv2);
+
+  String return_str = byteArrayToString(plain_p, sizeof(plain_p));
+
+  Serial.println("Decrypted color: ");
+  Serial.println(return_str);
+
+
+
+
 }
 
 void loop()
