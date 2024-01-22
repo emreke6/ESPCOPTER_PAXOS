@@ -338,57 +338,65 @@ void fillIv(byte * iv, int size) {
 
 void sendColorToOtherDevices(String &color)
 {
-  int n = MDNS.queryService("http", "tcp");
-  for (int i = 0; i < n; ++i)
-  {
-    if (MDNS.IP(i) != WiFi.localIP())
-    { // Skip sending to itself
-      // Create a client to send data to other devices
-      WiFiClient client;
-      if (client.connect(MDNS.IP(i), 80))
-      {
-        String payload = "identifier=" + String(hostname) + String(ESP.getChipId())+".local" + "&content=";
-        byte ciphered_payload[CIPHER_SIZE];
-        byte targetKey[KEY_SIZE];
-        if(!getKey(MDNS.hostname(i).c_str(),targetKey)) {
-          Serial.print("could not find key of hostname: ");
+  int maxAttempts = 5;
+  int attempt = 0;
+  while(attempt < maxAttempts) {
+    int n = MDNS.queryService("http", "tcp");
+    int send = 0;
+    for (int i = 0; i < n; ++i)
+    {
+      if (MDNS.IP(i) != WiFi.localIP())
+      { // Skip sending to itself
+        // Create a client to send data to other devices
+        WiFiClient client;
+        if (client.connect(MDNS.IP(i), 80))
+        {
+          String payload = "identifier=" + String(hostname) + String(ESP.getChipId())+".local" + "&content=";
+          byte ciphered_payload[CIPHER_SIZE];
+          byte targetKey[KEY_SIZE];
+          if(!getKey(MDNS.hostname(i).c_str(),targetKey)) {
+            Serial.print("could not find key of hostname: ");
+            Serial.println(MDNS.hostname(i));
+            continue;
+          }
+          aes.setPadMode((paddingMode) 0);
+          byte iv[BLOCK_SIZE];
+          fillIv(iv,BLOCK_SIZE);
+          encrypt(color,ciphered_payload,targetKey,iv);
+          byte cipherEncoded[sizeof(ciphered_payload) * 4 / 3 + 1];
+        encode_base64(ciphered_payload,sizeof(ciphered_payload),cipherEncoded);
+                byte ivEncoded[sizeof(iv) * 4 / 3 + 1];
+        encode_base64(iv,sizeof(iv),ivEncoded);
+          payload+=byteArrayToString(cipherEncoded,sizeof(cipherEncoded));
+          payload+="&iv=";
+          payload+=byteArrayToString(ivEncoded,sizeof(ivEncoded));
+          Serial.println(payload);
+          client.print("POST /consensus2 HTTP/1.1\r\n");
+          client.print("Host: ");
+          client.print(MDNS.hostname(i));
+          client.print("\r\n");
+          client.print("Content-Type: application/x-www-form-urlencoded\r\n");
+          client.print("Content-Length: ");
+          client.print(payload.length());
+          client.print("\r\n\r\n");
+          client.print(payload);
+          while(client.connected() && !client.available()) {
+            delay(100);
+          }
+          client.stop();
+          send++;
+          Serial.print("send post to ");
           Serial.println(MDNS.hostname(i));
-          continue;
         }
-        aes.setPadMode((paddingMode) 0);
-        byte iv[BLOCK_SIZE];
-        fillIv(iv,BLOCK_SIZE);
-        encrypt(color,ciphered_payload,targetKey,iv);
-        byte cipherEncoded[sizeof(ciphered_payload) * 4 / 3 + 1];
-      encode_base64(ciphered_payload,sizeof(ciphered_payload),cipherEncoded);
-              byte ivEncoded[sizeof(iv) * 4 / 3 + 1];
-      encode_base64(iv,sizeof(iv),ivEncoded);
-        payload+=byteArrayToString(cipherEncoded,sizeof(cipherEncoded));
-        payload+="&iv=";
-        payload+=byteArrayToString(ivEncoded,sizeof(ivEncoded));
-        Serial.println(payload);
-        client.print("POST /consensus2 HTTP/1.1\r\n");
-        client.print("Host: ");
-        client.print(MDNS.hostname(i));
-        client.print("\r\n");
-        client.print("Content-Type: application/x-www-form-urlencoded\r\n");
-        client.print("Content-Length: ");
-        client.print(payload.length());
-        client.print("\r\n\r\n");
-        client.print(payload);
-        while(client.connected() && !client.available()) {
-          delay(100);
+        else
+        {
+          Serial.print("could not connect to");
+          Serial.println(MDNS.hostname(i));
         }
-        client.stop();
-        Serial.print("send post to ");
-        Serial.println(MDNS.hostname(i));
-      }
-      else
-      {
-        Serial.print("could not connect to");
-        Serial.println(MDNS.hostname(i));
       }
     }
+    if(send > 0) break;
+    else attempt++;
   }
 }
 
