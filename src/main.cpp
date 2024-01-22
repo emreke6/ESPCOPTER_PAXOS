@@ -188,10 +188,39 @@ int roundUpToMultipleOf4(int value) {
     return ((value + 3) / 4) * 4;
 }
 
+BigNumber from_bytes_big_endian(const unsigned char * bytes) {
+    BigNumber result(0);
+    for (size_t i = 0; i < 16; ++i) {
+        result = result *  BigNumber(256) + BigNumber(bytes[i]);
+    }
+    return result;
+}
 
-void requestAesKeyPair(String other_hostname) {
+void big_endian_to_bytes(const BigNumber &number, unsigned char *bytes) {
+  BigNumber temp = number;
+  for (size_t i = 15; i < 16; --i) {
+    bytes[i] = (temp % BigNumber(256));
+    temp = temp / BigNumber(256);
+  }
+}
+
+BigNumber rsa_encrypt(BigNumber plaintext, BigNumber public_key, BigNumber modulus)
+{
+  return plaintext.powMod(public_key, modulus);
+}
+
+BigNumber rsa_decrypt(BigNumber ciphertext, BigNumber private_key, BigNumber modulus)
+{
+  return ciphertext.powMod(private_key, modulus);
+}
+
+void requestAesKeyPair(String other_hostname,IPAddress ipaddress) {
   WiFiClient client;
+
+  Serial.print("other hostnamae: ");
+  Serial.println(other_hostname);
   String payload = "identifier=" + String(hostname) + String(ESP.getChipId())+".local";
+  if(client.connect(ipaddress,80)) {
   client.print("POST /creatersa HTTP/1.1\r\n");
   client.print("Host: ");
   client.print(other_hostname.c_str());
@@ -201,16 +230,45 @@ void requestAesKeyPair(String other_hostname) {
   client.print(payload.length());
   client.print("\r\n\r\n");
   client.print(payload);
+  Serial.println("Asked for aes key");
   while(client.connected() && !client.available()) {
     delay(100);
   }
-  
-  while (client.available()) {
-    String line = client.readStringUntil('\n');
-    Serial.println(line);
+  Serial.println("client availabel");
+  Serial.println(client.available());
+
+    String line = client.readString();
+    int index = line.indexOf("\r\n\r\n");
+    String encoded = line.substring(index + 4,line.length()-1);
+    Serial.print("encoded: ");
+    Serial.println(encoded);
+    size_t maxDecodedSize2 = (encoded.length() * 3) / 4;
+
+  byte aesArray[maxDecodedSize2];
+
+  int aesLength = decode_base64((unsigned char *)encoded.c_str(),encoded.length(), aesArray);
+  BigNumber aesNumber = rsa_decrypt(from_bytes_big_endian(aesArray),drone_1_pri,public_modulus);
+  byte aesByte[KEY_SIZE];
+  big_endian_to_bytes(aesNumber,aesByte);
+     Serial.print("aes hex: ");
+  for (int i = 0; i < 16; ++i) {
+    Serial.print(aesByte[i], HEX);
+    Serial.print(" ");
+  }
+  for(int i  =0;i<NETWORK_SIZE;i++) {
+    if(strlen(keyMappings[i].hostName) == 0) {
+      Serial.print("Writing key for the hostname: ");
+      Serial.print(other_hostname);
+      Serial.print(" at position: ");
+      Serial.println(i);
+      snprintf(keyMappings[i].hostName,MAX_NAME,other_hostname.c_str());
+      memcpy(keyMappings[i].key,aesByte,KEY_SIZE);
+      break;
+    }
   }
   
   client.stop();
+  }
 }
 
 
@@ -298,7 +356,7 @@ void handleConsensus2() {
   byte targetKey[KEY_SIZE];
   if(!getKey(identifier.c_str(),targetKey)) {
     Serial.println("Creating pair");
-    requestAesKeyPair(identifier);
+    //requestAesKeyPair(identifier);
 
     Serial.print("could not find key of hostname: ");
     Serial.println(identifier);
@@ -392,17 +450,17 @@ void sendColorToOtherDevices(String &color)
       { // Skip sending to itself
         // Create a client to send data to other devices
         WiFiClient client;
-        if (client.connect(MDNS.IP(i), 80))
-        {
+       
           String payload = "identifier=" + String(hostname) + String(ESP.getChipId())+".local" + "&content=";
           byte ciphered_payload[CIPHER_SIZE];
           byte targetKey[KEY_SIZE];
           if(!getKey(MDNS.hostname(i).c_str(),targetKey)) {
-            requestAesKeyPair(MDNS.hostname(i));
-
-            Serial.print("could not find key of hostname: ");
-            Serial.println(MDNS.hostname(i));
-            continue;
+            requestAesKeyPair(MDNS.hostname(i),MDNS.IP(i));
+            if(!getKey(MDNS.hostname(i).c_str(),targetKey)) {
+              Serial.print("Could not find key of hostname: ");
+              Serial.println(MDNS.hostname(i));
+              continue;
+            }
           }
           aes.setPadMode((paddingMode) 0);
           byte iv[BLOCK_SIZE];
@@ -415,6 +473,8 @@ void sendColorToOtherDevices(String &color)
           payload+=byteArrayToString(cipherEncoded,sizeof(cipherEncoded));
           payload+="&iv=";
           payload+=byteArrayToString(ivEncoded,sizeof(ivEncoded));
+        if (client.connect(MDNS.IP(i), 80))
+        {
           Serial.println(payload);
           client.print("POST /consensus2 HTTP/1.1\r\n");
           client.print("Host: ");
@@ -453,31 +513,7 @@ const unsigned char* generateKey() {
     return (unsigned char*) numericString.c_str();
 }
 
-BigNumber from_bytes_big_endian(const unsigned char * bytes) {
-    BigNumber result(0);
-    for (size_t i = 0; i < 16; ++i) {
-        result = result *  BigNumber(256) + BigNumber(bytes[i]);
-    }
-    return result;
-}
 
-void big_endian_to_bytes(const BigNumber &number, unsigned char *bytes) {
-  BigNumber temp = number;
-  for (size_t i = 15; i < 16; --i) {
-    bytes[i] = (temp % BigNumber(256));
-    temp = temp / BigNumber(256);
-  }
-}
-
-BigNumber rsa_encrypt(BigNumber plaintext, BigNumber public_key, BigNumber modulus)
-{
-  return plaintext.powMod(public_key, modulus);
-}
-
-BigNumber rsa_decrypt(BigNumber ciphertext, BigNumber private_key, BigNumber modulus)
-{
-  return ciphertext.powMod(private_key, modulus);
-}
 
 
 void send_message(int target_ssid, byte* result) {
@@ -566,8 +602,8 @@ void setup()
   snprintf(RSAKeyMappings[2].hostName,MAX_NAME,"MyESP15330598.local");
 
   RSAKeyMappings[0].key = drone_1_pub;
-  RSAKeyMappings[1].key = drone_2_pub;
-  RSAKeyMappings[2].key = drone_3_pub;
+  RSAKeyMappings[1].key = drone_1_pub;
+  RSAKeyMappings[2].key = drone_1_pub;
 
   for(int i  =0;i<NETWORK_SIZE;i++) {
     Serial.print("mapping host "+String(i) + " ");
