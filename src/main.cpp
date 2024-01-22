@@ -527,7 +527,6 @@ void loop()
 {
   MDNS.update();
   _httpServer.handleClient();
-    int n = MDNS.queryService("http", "tcp");
   // Check for server messages periodically
   // checkServerMessages();
 
