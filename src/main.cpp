@@ -516,31 +516,48 @@ const unsigned char* generateKey() {
 
 
 
-void send_message(int target_ssid, byte* result) {
+void send_message(byte* result, String other_hostname) {
   const unsigned char* key_ptr = generateKey();
   byte key[17];
   memcpy(key, key_ptr, sizeof(key_ptr));
 
+  Serial.println("CREATED AES: ");
   for (int i = 0; i < 16; ++i) {
     Serial.print(key[i], HEX);
     Serial.print(" ");
   }
 
-  memcpy(keyMappings[target_ssid].key,key,KEY_SIZE);
-
-  BigNumber aes_key_big = from_bytes_big_endian(key);
-  BigNumber cur_public =  RSAKeyMappings[target_ssid].key;
-  BigNumber cnum_key = rsa_encrypt(aes_key_big, cur_public, public_modulus);
-
-  unsigned char ctext_key[16];
-  big_endian_to_bytes(cnum_key, ctext_key); 
- 
-  byte cipherEncoded[sizeof(ctext_key) * 4 / 3 + 1];
-  encode_base64(ctext_key,sizeof(ctext_key),cipherEncoded);
-  
-  for (int i = 0; i < 23; i++) {
-    result[i] = cipherEncoded[i];
+  for(int i  =0;i<NETWORK_SIZE;i++) {
+    if(strlen(keyMappings[i].hostName) == 0) {
+      Serial.print("Writing key for the hostname: ");
+      Serial.print(other_hostname);
+      Serial.print(" at position: ");
+      Serial.println(i);
+      snprintf(keyMappings[i].hostName,MAX_NAME,other_hostname.c_str());
+      memcpy(keyMappings[i].key,key,KEY_SIZE);
+      break;
+    }
   }
+
+   for(int i  =0;i<NETWORK_SIZE;i++) {
+    if(strcmp(RSAKeyMappings[i].hostName, other_hostname.c_str()) == 0) {
+        BigNumber aes_key_big = from_bytes_big_endian(key);
+        BigNumber cur_public =  RSAKeyMappings[i].key;
+        BigNumber cnum_key = rsa_encrypt(aes_key_big, cur_public, public_modulus);
+
+        unsigned char ctext_key[16];
+        big_endian_to_bytes(cnum_key, ctext_key); 
+      
+        byte cipherEncoded[sizeof(ctext_key) * 4 / 3 + 1];
+        encode_base64(ctext_key,sizeof(ctext_key),cipherEncoded);
+        
+        for (int i = 0; i < 23; i++) {
+          result[i] = cipherEncoded[i];
+        }
+
+        break;
+      }
+    } 
 }
 
 
@@ -548,12 +565,12 @@ void createPairwiseAesKey() {
   byte cur_encoded[22]; 
 
   String identifier = _httpServer.arg("identifier");
-  for (int i = 0; i < NETWORK_SIZE; i++) {
-    if (strcmp(keyMappings[i].hostName, identifier.c_str()) == 0) {
-      send_message(i, cur_encoded);
-      break;
-    }
-  }
+  send_message(cur_encoded, identifier);
+  
+
+  Serial.print("cur encoded: ");
+  Serial.println(byteArrayToString(cur_encoded, 22));
+
 
   _httpServer.send(200, "text/plain", (const char*) cur_encoded);
 }
