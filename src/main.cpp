@@ -4,11 +4,12 @@
 #include <ESP8266mDNS.h>
 #include <FS.h>
 #include "base64.hpp"
+#include "BigNumber.h"
 #include "AES.h" // Include the AES library
 // const char* ssid = "Emre6";
 // const char* password = "emreke66";
 #define BLOCK_SIZE 16
-#define KEY_SIZE 32
+#define KEY_SIZE 16
 #define CIPHER_SIZE 33
 #define MAX_NAME 256
 #define NETWORK_SIZE 3
@@ -17,9 +18,21 @@ struct keyMapping {
   byte key[KEY_SIZE];
 };
 
+struct RsaKeyMapping {
+  char hostName[MAX_NAME];
+  BigNumber key = 0;
+};
+
+BigNumber public_modulus = BigNumber("211881535355297736509781884103072553991");
+BigNumber drone_1_pub = BigNumber("124636197267822197929422428643519936353");
+BigNumber drone_2_pub = BigNumber("110546888011459688598270328014252465287"); // 23
+BigNumber drone_3_pub = BigNumber("88853547084479695943233408807154535271"); // 31
+
+BigNumber drone_1_pri = 17;
+
 struct keyMapping keyMappings[NETWORK_SIZE];
 
-struct keyMapping RSAKeyMappings[NETWORK_SIZE];
+struct RsaKeyMapping RSAKeyMappings[NETWORK_SIZE];
 
 const char *server_ip = "172.20.10.7"; // Replace with the IP address of your server
 const int server_port = 8080;
@@ -176,6 +189,31 @@ int roundUpToMultipleOf4(int value) {
 }
 
 
+void requestAesKeyPair(String other_hostname) {
+  WiFiClient client;
+  String payload = "identifier=" + String(hostname) + String(ESP.getChipId())+".local";
+  client.print("POST /creatersa HTTP/1.1\r\n");
+  client.print("Host: ");
+  client.print(other_hostname.c_str());
+  client.print("\r\n");
+  client.print("Content-Type: application/x-www-form-urlencoded\r\n");
+  client.print("Content-Length: ");
+  client.print(payload.length());
+  client.print("\r\n\r\n");
+  client.print(payload);
+  while(client.connected() && !client.available()) {
+    delay(100);
+  }
+  
+  while (client.available()) {
+    String line = client.readStringUntil('\n');
+    Serial.println(line);
+  }
+  
+  client.stop();
+}
+
+
 
 void sendColorToOtherDevices(String &color);
 void handleConsensus2() {
@@ -259,6 +297,9 @@ void handleConsensus2() {
   //ivArray[maxDecodedSize2 - 1] = '\n';
   byte targetKey[KEY_SIZE];
   if(!getKey(identifier.c_str(),targetKey)) {
+    Serial.println("Creating pair");
+    requestAesKeyPair(identifier);
+
     Serial.print("could not find key of hostname: ");
     Serial.println(identifier);
     _httpServer.send(400, "text/plain", "Bad Request");
@@ -357,6 +398,8 @@ void sendColorToOtherDevices(String &color)
           byte ciphered_payload[CIPHER_SIZE];
           byte targetKey[KEY_SIZE];
           if(!getKey(MDNS.hostname(i).c_str(),targetKey)) {
+            requestAesKeyPair(MDNS.hostname(i));
+
             Serial.print("could not find key of hostname: ");
             Serial.println(MDNS.hostname(i));
             continue;
@@ -402,10 +445,90 @@ void sendColorToOtherDevices(String &color)
   }
 }
 
+const unsigned char* generateKey() {
+    String numericString;
+    for (int i = 0; i < 32; ++i) {
+        numericString += aes.getrandom() % 10 + '0';
+    }
+    return (unsigned char*) numericString.c_str();
+}
+
+BigNumber from_bytes_big_endian(const unsigned char * bytes) {
+    BigNumber result(0);
+    for (size_t i = 0; i < 16; ++i) {
+        result = result *  BigNumber(256) + BigNumber(bytes[i]);
+    }
+    return result;
+}
+
+void big_endian_to_bytes(const BigNumber &number, unsigned char *bytes) {
+  BigNumber temp = number;
+  for (size_t i = 15; i < 16; --i) {
+    bytes[i] = (temp % BigNumber(256));
+    temp = temp / BigNumber(256);
+  }
+}
+
+BigNumber rsa_encrypt(BigNumber plaintext, BigNumber public_key, BigNumber modulus)
+{
+  return plaintext.powMod(public_key, modulus);
+}
+
+BigNumber rsa_decrypt(BigNumber ciphertext, BigNumber private_key, BigNumber modulus)
+{
+  return ciphertext.powMod(private_key, modulus);
+}
+
+
+void send_message(int target_ssid, byte* result) {
+  const unsigned char* key_ptr = generateKey();
+  byte key[17];
+  memcpy(key, key_ptr, sizeof(key_ptr));
+
+  for (int i = 0; i < 16; ++i) {
+    Serial.print(key[i], HEX);
+    Serial.print(" ");
+  }
+
+  memcpy(keyMappings[target_ssid].key,key,KEY_SIZE);
+
+  BigNumber aes_key_big = from_bytes_big_endian(key);
+  BigNumber cur_public =  RSAKeyMappings[target_ssid].key;
+  BigNumber cnum_key = rsa_encrypt(aes_key_big, cur_public, public_modulus);
+
+  unsigned char ctext_key[16];
+  big_endian_to_bytes(cnum_key, ctext_key); 
+ 
+  byte cipherEncoded[sizeof(ctext_key) * 4 / 3 + 1];
+  encode_base64(ctext_key,sizeof(ctext_key),cipherEncoded);
+  
+  for (int i = 0; i < 23; i++) {
+    result[i] = cipherEncoded[i];
+  }
+}
+
+
+void createPairwiseAesKey() {
+  byte cur_encoded[22]; 
+
+  String identifier = _httpServer.arg("identifier");
+  for (int i = 0; i < NETWORK_SIZE; i++) {
+    if (strcmp(keyMappings[i].hostName, identifier.c_str()) == 0) {
+      send_message(i, cur_encoded);
+      break;
+    }
+  }
+
+  _httpServer.send(200, "text/plain", (const char*) cur_encoded);
+}
 
 void setup()
 {
   Serial.begin(115200);
+
+  BigNumber::begin();
+
+
   if (!SPIFFS.begin())
   {
     Serial.println("Failed to mount file system");
@@ -438,17 +561,13 @@ void setup()
   }
   WiFi.hostname(hostname);
 
+  snprintf(RSAKeyMappings[0].hostName,MAX_NAME,"MyESP15330671.local");
+  snprintf(RSAKeyMappings[1].hostName,MAX_NAME,"MyESP12889460.local");
+  snprintf(RSAKeyMappings[2].hostName,MAX_NAME,"MyESP15330598.local");
 
-
-  snprintf(keyMappings[0].hostName,MAX_NAME,"MyESP15330671.local");
-  snprintf(keyMappings[1].hostName,MAX_NAME,"MyESP12889460.local");
-  snprintf(keyMappings[2].hostName,MAX_NAME,"MyESP15330598.local");
-
-  byte key[]="12345678901234561234567890123456";
-
-  memcpy(keyMappings[0].key,key,KEY_SIZE);
-  memcpy(keyMappings[1].key,key,KEY_SIZE);
-  memcpy(keyMappings[2].key,key,KEY_SIZE);
+  RSAKeyMappings[0].key = drone_1_pub;
+  RSAKeyMappings[1].key = drone_2_pub;
+  RSAKeyMappings[2].key = drone_3_pub;
 
   for(int i  =0;i<NETWORK_SIZE;i++) {
     Serial.print("mapping host "+String(i) + " ");
@@ -483,6 +602,7 @@ void setup()
   _httpServer.on("/consensuspage", HTTP_GET, consensusPage);
   _httpServer.on("/consensus", HTTP_POST, handleConsensus);
   _httpServer.on("/consensus2", HTTP_POST, handleConsensus2);
+  _httpServer.on("/creatersa", HTTP_POST, createPairwiseAesKey);
   _httpServer.begin();
 
   while (!MDNS.begin(hostname + String(ESP.getChipId())))
@@ -505,33 +625,8 @@ void setup()
   digitalWrite(redPin, HIGH);
   digitalWrite(greenPin, HIGH);
 
-  String s = "sdfghjkjhgfewrtyhujukjhgfdsdfghjk";
-  byte cipher[s.length()];
-  byte iv[BLOCK_SIZE];
-  fillIv(iv,BLOCK_SIZE);
-  encrypt(s,cipher,keyMappings[0].key,iv);
-  Serial.print("cipher array: ");
-  Serial.write(cipher,sizeof(cipher));
-  Serial.println("");
-  byte cipherEncoded[sizeof(cipher) * 4 / 3 + 1];
-  encode_base64(cipher,sizeof(cipher),cipherEncoded);
-  size_t maxDecodedSize = (sizeof(cipherEncoded)* 3) / 4;
-  byte contentArray[maxDecodedSize];
-
-  decode_base64(cipherEncoded,contentArray);
-  //contentArray[maxDecodedSize - 1] = '\0';
-  Serial.print("decoded cipher");
-  Serial.write(contentArray,maxDecodedSize);
-  Serial.println("");
-  String decryyed = decrypt(cipher,sizeof(cipher),keyMappings[0].key,iv);
-  Serial.print("decryerd: ");
-  Serial.println(decryyed);
-
-  // Connect to the server
-  // connectToServer();
-
-  // decrypt_with_aes_cbc();
 }
+
 
 void loop()
 {
