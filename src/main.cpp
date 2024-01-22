@@ -247,6 +247,12 @@ void requestAesKeyPair(String other_hostname,IPAddress ipaddress) {
   byte aesArray[maxDecodedSize2];
 
   int aesLength = decode_base64((unsigned char *)encoded.c_str(),encoded.length(), aesArray);
+
+  for (int i = 0; i < maxDecodedSize2; i++) {
+    Serial.print(aesArray[i], HEX);
+    Serial.print(" ");
+  }
+
   BigNumber aesNumber = rsa_decrypt(from_bytes_big_endian(aesArray),drone_1_pri,public_modulus);
   byte aesByte[KEY_SIZE];
   big_endian_to_bytes(aesNumber,aesByte);
@@ -337,7 +343,7 @@ void handleConsensus2() {
 
   int ivLength = decode_base64((unsigned char *)iv.c_str(),iv.length(), ivArray);
   if(ivLength != BLOCK_SIZE) {
-    Serial.println("ANAANI SIKIM");
+    Serial.println("burada olmamaliydi");
   }
   Serial.print("iv hex: ");
   for (int i = 0; i < 16; ++i) {
@@ -399,7 +405,7 @@ void handleConsensus()
     String selectedColor = _httpServer.arg("color");
     sendColorToOtherDevices(selectedColor);
     Serial.println("Original Color: " + selectedColor);
-    if (selectedColor == "BLUE")
+    if (selectedColor == "BLU")
     {
       // BLUE LED
       digitalWrite(bluePin, HIGH);
@@ -441,6 +447,7 @@ void sendColorToOtherDevices(String &color)
 {
   int maxAttempts = 5;
   int attempt = 0;
+  
   while(attempt < maxAttempts) {
     int n = MDNS.queryService("http", "tcp");
     int send = 0;
@@ -500,7 +507,7 @@ void sendColorToOtherDevices(String &color)
         }
       }
     }
-    if(send > 0) break;
+    if(send >= 2) break;
     else attempt++;
   }
 }
