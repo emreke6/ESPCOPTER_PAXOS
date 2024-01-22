@@ -19,6 +19,8 @@ struct keyMapping {
 
 struct keyMapping keyMappings[NETWORK_SIZE];
 
+struct keyMapping RSAKeyMappings[NETWORK_SIZE];
+
 const char *server_ip = "172.20.10.7"; // Replace with the IP address of your server
 const int server_port = 8080;
 
