@@ -355,6 +355,7 @@ void sendColorToOtherDevices(String &color)
           Serial.println(MDNS.hostname(i));
           continue;
         }
+        aes.setPadMode((paddingMode) 0);
         byte iv[BLOCK_SIZE];
         fillIv(iv,BLOCK_SIZE);
         encrypt(color,ciphered_payload,targetKey,iv);
@@ -375,7 +376,9 @@ void sendColorToOtherDevices(String &color)
         client.print(payload.length());
         client.print("\r\n\r\n");
         client.print(payload);
-        delay(100);
+        while(client.connected() && !client.available()) {
+          delay(100);
+        }
         client.stop();
         Serial.print("send post to ");
         Serial.println(MDNS.hostname(i));
