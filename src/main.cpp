@@ -28,7 +28,7 @@ BigNumber drone_1_pub = BigNumber("124636197267822197929422428643519936353");
 BigNumber drone_2_pub = BigNumber("110546888011459688598270328014252465287"); // 23
 BigNumber drone_3_pub = BigNumber("88853547084479695943233408807154535271"); // 31
 
-BigNumber drone_1_pri = 17;
+BigNumber drone_1_pri = 31;
 
 struct keyMapping keyMappings[NETWORK_SIZE];
 
@@ -619,8 +619,8 @@ void setup()
   snprintf(RSAKeyMappings[2].hostName,MAX_NAME,"MyESP15330598.local");
 
   RSAKeyMappings[0].key = drone_1_pub;
-  RSAKeyMappings[1].key = drone_1_pub;
-  RSAKeyMappings[2].key = drone_1_pub;
+  RSAKeyMappings[1].key = drone_2_pub;
+  RSAKeyMappings[2].key = drone_3_pub;
 
   for(int i  =0;i<NETWORK_SIZE;i++) {
     Serial.print("mapping host "+String(i) + " ");
