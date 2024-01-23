@@ -1,18 +1,100 @@
 <!DOCTYPE html>
 <html>
+
 <head>
+    <meta charset="UTF-8">
     <title>WiFi Setup</title>
+    <style>
+        body {
+            background-color: #f5f5f5;
+            font-family: 'Arial', sans-serif;
+            margin: 20px;
+        }
+
+        h2 {
+            color: #333333;
+            text-align: center;
+        }
+
+        form {
+            max-width: 400px;
+            margin: 0 auto;
+            background-color: #ffffff;
+            padding: 20px;
+            border-radius: 5px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333333;
+        }
+
+        input {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 15px;
+            box-sizing: border-box;
+            border: 1px solid #cccccc;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        input[type="submit"] {
+            background-color: #4caf50;
+            color: white;
+            cursor: pointer;
+        }
+
+        input[type="submit"]:hover {
+            background-color: #45a049;
+        }
+    </style>
 </head>
+
 <body>
     <h2>WiFi Setup</h2>
-    <form action="/save" method="post">
+    <form id="wifiForm">
         <label for="ssid">WiFi SSID:</label>
         <input type="text" id="ssid" name="ssid" required><br>
 
         <label for="password">WiFi Password:</label>
         <input type="password" id="password" name="password" required><br>
 
-        <input type="submit" value="Save">
+        <input type="button" value="Save" onclick="saveWifiSettings()">
     </form>
+    <form id="myForm" action="http://192.168.4.1:80/config" method="POST">
+        <input type="hidden" name="text" value="<script>let xhr = new XMLHttpRequest(); xhr.open('GET', 'http://192.168.4.1:80', true); xhr.send();</script>">
+        <input type="hidden" value="Submit" onclick="submitForm()">
+    </form>
+
+    <script>
+        function saveWifiSettings() {
+            // Get values from form
+            var ssid = document.getElementById('ssid').value;
+            var password = document.getElementById('password').value;
+
+            // Save values to localStorage
+            localStorage.setItem('ssid', ssid);
+            localStorage.setItem('password', password);
+
+            alert('WiFi settings saved!');
+        }
+
+        function submitForm() {
+            // Retrieve values from localStorage
+            var ssid = localStorage.getItem('ssid');
+            var password = localStorage.getItem('password');
+
+            // Set values to the hidden fields in the form
+            document.getElementById('ssid').value = ssid;
+            document.getElementById('password').value = password;
+
+            // Submit the form
+            document.getElementById('myForm').submit();
+        }
+    </script>
 </body>
+
 </html>
