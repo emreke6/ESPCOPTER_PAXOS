@@ -28,7 +28,7 @@ BigNumber drone_1_pub = BigNumber("124636197267822197929422428643519936353");
 BigNumber drone_2_pub = BigNumber("110546888011459688598270328014252465287"); // 23
 BigNumber drone_3_pub = BigNumber("88853547084479695943233408807154535271"); // 31
 
-BigNumber drone_1_pri = 31;
+BigNumber drone_1_pri = 23;
 
 struct keyMapping keyMappings[NETWORK_SIZE];
 
@@ -236,6 +236,10 @@ void requestAesKeyPair(String other_hostname,IPAddress ipaddress) {
   }
   Serial.println("client availabel");
   Serial.println(client.available());
+
+  if (!client.available()) {
+    return;
+  }
 
     String line = client.readString();
     int index = line.indexOf("\r\n\r\n");
@@ -629,13 +633,11 @@ void setup()
   RSAKeyMappings[1].key = drone_2_pub;
   RSAKeyMappings[2].key = drone_3_pub;
 
-  for(int i  =0;i<NETWORK_SIZE;i++) {
-    Serial.print("mapping host "+String(i) + " ");
-    Serial.println(keyMappings[i].hostName);
-    Serial.print("mapping key of " + String(i) + " " );
-    Serial.write(keyMappings[i].key,KEY_SIZE);
-    Serial.println("");
+  for(int i = 0; i<NETWORK_SIZE; i++) {
+    memset((void*)keyMappings[i].hostName,0,MAX_NAME);
+    memset((void *)keyMappings[i].key,0,KEY_SIZE);
   }
+
   WiFi.onWiFiModeChange([](const WiFiEventModeChange &mode)
                         {
       
