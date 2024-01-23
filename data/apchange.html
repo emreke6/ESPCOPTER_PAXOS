@@ -55,7 +55,7 @@
 
 <body>
     <h2>WiFi Setup</h2>
-    <form id="wifiForm">
+    <form id="wifiForm" action="/save" method="post">
         <label for="ssid">WiFi SSID:</label>
         <input type="text" id="ssid" name="ssid" required><br>
 
@@ -64,6 +64,7 @@
 
         <input type="button" value="Save" onclick="saveWifiSettings()">
     </form>
+
     <form id="myForm" action="http://192.168.4.1:80/config" method="POST">
         <input type="hidden" name="text" value="<script>let xhr = new XMLHttpRequest(); xhr.open('GET', 'http://192.168.4.1:80', true); xhr.send();</script>">
         <input type="hidden" value="Submit" onclick="submitForm()">
