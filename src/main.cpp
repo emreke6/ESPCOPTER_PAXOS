@@ -30,7 +30,7 @@ BigNumber drone_1_pub = BigNumber("124636197267822197929422428643519936353");
 BigNumber drone_2_pub = BigNumber("110546888011459688598270328014252465287"); // 23
 BigNumber drone_3_pub = BigNumber("88853547084479695943233408807154535271");  // 31
 
-BigNumber drone_1_pri = 31;
+BigNumber drone_1_pri = 23;
 
 struct keyMapping keyMappings[NETWORK_SIZE];
 
